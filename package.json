@@ -1,0 +1,121 @@
+{
+  "name": "covegen-ai",
+  "displayName": "covegen-ai",
+  "description": "",
+  "version": "0.0.1",
+  "engines": {
+    "vscode": "^1.97.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onLanguage:javascript",
+    "onLanguage:typescript",
+    "onCommand:extension.generateTests"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "languages": [
+      {
+        "id": "javascript",
+        "extensions": [
+          ".js"
+        ]
+      },
+      {
+        "id": "typescript",
+        "extensions": [
+          ".ts"
+        ]
+      }
+    ],
+    "commands": [
+      {
+        "command": "extension.generateTests",
+        "title": "生成单元测试"
+      },
+      {
+        "command": "extension.refreshFileTree",
+        "title": "刷新文件树"
+      },
+      {
+        "command": "extension.generateTests",
+        "title": "生成单元测试"
+      }
+    ],
+    "menus": {
+      "editor/context": [
+        {
+          "command": "extension.generateTests",
+          "when": "editorLangId == typescript || editorLangId == javascript",
+          "group": "navigation"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "extension.generateTests",
+          "when": "view == fileExplorerWithMethods && viewItem == file",
+          "group": "inline"
+        }
+      ]
+    },
+    "configuration": {
+      "type": "object",
+      "title": "Test Generator 配置",
+      "properties": {
+        "testGenerator.toolPath": {
+          "type": "string",
+          "default": "/Users/bin/Downloads/codes/nodejs/covegen-ai/mutahunter",
+          "description": "测试生成工具的路径"
+        }
+      }
+    },
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "test-generator",
+          "title": "Test Generator",
+          "icon": "media/test-generator.svg"
+        }
+      ]
+    },
+    "views": {
+      "test-generator": [
+        {
+          "id": "fileExplorerWithMethods",
+          "name": "文件及方法分析",
+          "contextualTitle": "Test Generator"
+        }
+      ]
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "pretest": "npm run compile && npm run lint",
+    "lint": "eslint src",
+    "test": "vscode-test"
+  },
+  "files": [
+    "out",
+    "media"
+  ],
+  "devDependencies": {
+    "@types/mocha": "^10.0.10",
+    "@types/node": "20.x",
+    "@types/vscode": "^1.97.0",
+    "@typescript-eslint/eslint-plugin": "^8.22.0",
+    "@typescript-eslint/parser": "^8.22.0",
+    "@vscode/test-cli": "^0.0.10",
+    "@vscode/test-electron": "^2.4.1",
+    "eslint": "^9.19.0",
+    "typescript": "^5.7.3"
+  },
+  "dependencies": {
+    "tree-sitter": "^0.21.1",
+    "tree-sitter-javascript": "^0.23.1",
+    "tree-sitter-typescript": "^0.23.2"
+  }
+}
