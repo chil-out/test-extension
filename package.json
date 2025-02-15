@@ -33,15 +33,15 @@
     "commands": [
       {
         "command": "extension.generateTests",
-        "title": "生成单元测试"
+        "title": "Generate Unit Test"
       },
       {
         "command": "extension.refreshFileTree",
-        "title": "刷新文件树"
+        "title": "Refresh File Tree"
       },
       {
         "command": "extension.generateTests",
-        "title": "生成单元测试"
+        "title": "Generate Unit Test"
       }
     ],
     "menus": {
@@ -62,12 +62,12 @@
     },
     "configuration": {
       "type": "object",
-      "title": "Test Generator 配置",
+      "title": "Test Generator Configuration",
       "properties": {
         "testGenerator.toolPath": {
           "type": "string",
           "default": "/Users/bin/Downloads/codes/nodejs/covegen-ai/mutahunter",
-          "description": "测试生成工具的路径"
+          "description": "Path to the test generation tool"
         }
       }
     },
@@ -75,7 +75,7 @@
       "activitybar": [
         {
           "id": "test-generator",
-          "title": "Test Generator",
+          "title": "CoveGen AI",
           "icon": "media/test-generator.svg"
         }
       ]
@@ -84,7 +84,7 @@
       "test-generator": [
         {
           "id": "fileExplorerWithMethods",
-          "name": "文件及方法分析",
+          "name": "",
           "contextualTitle": "Test Generator"
         }
       ]

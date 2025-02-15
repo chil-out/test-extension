@@ -25,7 +25,7 @@ export class TestCodeLensProvider implements vscode.CodeLensProvider {
 
             codeLenses.push(
                 new vscode.CodeLens(range, {
-                    title: "📝 生成单元测试",
+                    title: "📝 Generate Unit Test",
                     command: "extension.generateTests",
                     arguments: [document.uri]
                 })

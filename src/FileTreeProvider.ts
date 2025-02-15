@@ -310,7 +310,7 @@ private directoryContainsJsOrTs(dirPath: string): boolean {
             );
         });
     } catch (error) {
-        console.error('解析文件出错：', error);
+        console.error('Error parsing file:', error);
         return [];
     }
 }

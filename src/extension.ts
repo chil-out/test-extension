@@ -132,10 +132,10 @@ function generateTests(targetUri: vscode.Uri) {
 
 	vscode.window.withProgress({
 		location: vscode.ProgressLocation.Notification,
-		title: "正在生成测试...",
+		title: "Generating tests...",
 		cancellable: false
 	}, async (progress) => {
-		progress.report({ increment: 0, message: "初始化测试生成..." });
+		progress.report({ increment: 0, message: "Initializing test generation..." });
 
 		return new Promise<void>((resolve, reject) => {
 			exec(command, { cwd: workspacePath }, async (error, stdout, stderr) => {
@@ -144,27 +144,27 @@ function generateTests(targetUri: vscode.Uri) {
 					return;
 				}
 
-				progress.report({ increment: 50, message: "测试生成完成，正在打开文件..." });
+				progress.report({ increment: 50, message: "Test generation complete, opening file..." });
 
 				try {
-					// 打开生成的测试文件
+					// Open the generated test file
 					const testFileUri = vscode.Uri.file(testFilePath);
 					const doc = await vscode.workspace.openTextDocument(testFileUri);
 					await vscode.window.showTextDocument(doc);
 
-					// 在输出面板显示命令执行日志
+					// Show command execution log in output panel
 					const outputChannel = vscode.window.createOutputChannel('Test Generator');
 					outputChannel.appendLine(stdout);
 					outputChannel.show();
 
-					progress.report({ increment: 100, message: "完成！" });
+					progress.report({ increment: 100, message: "Done!" });
 					resolve();
 				} catch (err) {
 					reject(err);
 				}
 			});
 		}).catch(err => {
-			vscode.window.showErrorMessage(`生成测试失败: ${err.message}`);
+			vscode.window.showErrorMessage(`Test generation failed: ${err.message}`);
 		});
 	});
 }
