@@ -99,6 +99,11 @@ export class FileTreeProvider implements vscode.TreeDataProvider<FileTreeItem> {
       return this.getFileItems(rootPath);
     }
 
+    // 如果是文件夹，返回其内容
+    if (element.type === FileTreeItemType.Folder) {
+      return this.getFileItems(element.fullPath);
+    }
+
     // 处理其他情况
     if (element.type === FileTreeItemType.File) {
       return this.getClassGroups(element.fullPath);
@@ -174,11 +179,10 @@ export class FileTreeProvider implements vscode.TreeDataProvider<FileTreeItem> {
       const stats = fs.statSync(fullPath);
       const ext = path.extname(entry).toLowerCase();
 
-      // 只处理目录和 .js/.ts 文件
       if (stats.isDirectory()) {
-        // 检查目录中是否包含非测试的 js/ts 文件
-        const hasJsOrTs = this.directoryContainsJsOrTs(fullPath);
-        if (hasJsOrTs) {
+        // 递归获取子目录的内容
+        const subItems = this.getFileItems(fullPath);
+        if (subItems.length > 0) {
           items.push(new FileTreeItem(
             entry,
             FileTreeItemType.Folder,
@@ -186,21 +190,17 @@ export class FileTreeProvider implements vscode.TreeDataProvider<FileTreeItem> {
             vscode.TreeItemCollapsibleState.Collapsed
           ));
         }
-      } else if (stats.isFile() &&
-        (ext === '.js' || ext === '.ts') &&
-        !this.isTestFile(entry)) {
-        const absolutePath = path.resolve(fullPath);
-        console.log('Creating file item with path:', {
-          original: fullPath,
-          absolute: absolutePath,
-          normalized: path.normalize(absolutePath)
-        });
-        items.push(new FileTreeItem(
-          entry,
-          FileTreeItemType.File,
-          path.normalize(absolutePath),
-          vscode.TreeItemCollapsibleState.Collapsed
-        ));
+      } else if (stats.isFile()) {
+        const isJsTs = ext === '.js' || ext === '.ts' || ext === '.jsx' || ext === '.tsx';
+        if (isJsTs && !this.isTestFile(fullPath)) {
+          const absolutePath = path.resolve(fullPath);
+          items.push(new FileTreeItem(
+            entry,
+            FileTreeItemType.File,
+            path.normalize(absolutePath),
+            vscode.TreeItemCollapsibleState.Collapsed
+          ));
+        }
       }
     });
 
