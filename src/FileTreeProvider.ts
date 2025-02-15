@@ -86,15 +86,43 @@ export class FileTreeProvider implements vscode.TreeDataProvider<FileTreeItem> {
     return parts[parts.length - 1] || 'Project';
   }
 
-  // Add helper method to check if file is a test file
+  // Add helper method to check if file is a test file or config file
   private isTestFile(filename: string): boolean {
     const testPatterns = [
+        // Test files
         '.test.',
         '.spec.',
         '-test.',
         '-spec.',
         '__tests__',
-        '__test__'
+        '__test__',
+        // Test framework configs
+        'vitest.config.',
+        'jest.config.',
+        'jest.setup.',
+        'jest.teardown.',
+        'karma.conf.',
+        'cypress.config.',
+        'cypress.json',
+        'mocha.opts',
+        'ava.config.',
+        'jasmine.json',
+        // Tool configs
+        '.eslintrc.',
+        '.prettierrc.',
+        '.babelrc.',
+        'tsconfig.',
+        'webpack.config.',
+        'rollup.config.',
+        'vite.config.',
+        'postcss.config.',
+        'tailwind.config.',
+        '.stylelintrc',
+        'nodemon.json',
+        'package.json',
+        'package-lock.json',
+        'yarn.lock',
+        'pnpm-lock.yaml'
     ];
     return testPatterns.some(pattern => filename.toLowerCase().includes(pattern));
   }
