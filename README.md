@@ -1,4 +1,4 @@
-# covegen-ai README
+# README
 
 This is the README for your extension "covegen-ai". After writing up a brief description, we recommend including the following sections.
 
