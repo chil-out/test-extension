@@ -73,7 +73,7 @@ export function activate(context: vscode.ExtensionContext) {
 
 	context.subscriptions.push(disposable);
 
-	// 注册 TreeDataProvider
+	// Register TreeDataProvider
 	const fileTreeProvider = new FileTreeProvider();
 	const treeView = vscode.window.createTreeView('fileExplorerWithMethods', {
 		treeDataProvider: fileTreeProvider,
@@ -81,11 +81,34 @@ export function activate(context: vscode.ExtensionContext) {
 	});
 	context.subscriptions.push(treeView);
 
-	// 可选：提供一个刷新命令
+	// Register refresh command
 	let disposableRefresh = vscode.commands.registerCommand('extension.refreshFileTree', () => {
 		fileTreeProvider.refresh();
 	});
 	context.subscriptions.push(disposableRefresh);
+
+	// Auto refresh tree view when configuration changes
+	context.subscriptions.push(
+		vscode.workspace.onDidChangeConfiguration(() => {
+			fileTreeProvider.refresh();
+		})
+	);
+
+	// Auto refresh when files change
+	context.subscriptions.push(
+		vscode.workspace.onDidSaveTextDocument(() => {
+			fileTreeProvider.refresh();
+		}),
+		vscode.workspace.onDidCreateFiles(() => {
+			fileTreeProvider.refresh();
+		}),
+		vscode.workspace.onDidDeleteFiles(() => {
+			fileTreeProvider.refresh();
+		}),
+		vscode.workspace.onDidRenameFiles(() => {
+			fileTreeProvider.refresh();
+		})
+	);
 }
 
 function generateTests(targetUri: vscode.Uri) {

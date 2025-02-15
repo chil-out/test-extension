@@ -1,5 +1,7 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
+import { FileTreeProvider } from './FileTreeProvider';
+import Parser from 'tree-sitter';
 
 export enum FileTreeItemType {
   Folder,
@@ -21,43 +23,31 @@ export class FileTreeItem extends vscode.TreeItem {
     public readonly type: FileTreeItemType,
     public readonly fullPath: string,
     public readonly collapsibleState: vscode.TreeItemCollapsibleState,
-    public readonly command?: vscode.Command
+    public readonly command?: vscode.Command,
+    public readonly node?: Parser.SyntaxNode
   ) {
     super(label, collapsibleState);
 
     switch (type) {
       case FileTreeItemType.Folder:
         this.contextValue = 'folder';
-        this.iconPath = new vscode.ThemeIcon('folder');
+        if (label === 'TESTABLE CODES') {
+          this.iconPath = new vscode.ThemeIcon('package');
+        } else {
+          this.iconPath = new vscode.ThemeIcon('folder');
+        }
         break;
       case FileTreeItemType.File:
         this.contextValue = 'file';
-        // Use specific icons based on file extension
-        const ext = path.extname(fullPath).toLowerCase();
-        // 使用文件类型图标
-        if (ext === '.ts' || ext === '.tsx') {
-          this.iconPath = new vscode.ThemeIcon('symbol-file');
-        } else if (ext === '.json') {
-          this.iconPath = new vscode.ThemeIcon('json');
-        } else if (fullPath.includes('node_modules')) {
-          this.iconPath = new vscode.ThemeIcon('package');
-        } else {
-          this.iconPath = new vscode.ThemeIcon('file');
-        }
+        this.iconPath = new vscode.ThemeIcon('file-code');
         // Show file extension in the label
         this.label = path.basename(fullPath);
-        // Add test generation button with icon
+        // Add test generation button with icon only
         const absolutePath = path.normalize(fullPath);
         const fileUri = vscode.Uri.file(absolutePath);
-        console.log('Creating button with URI:', {
-          path: absolutePath,
-          uri: fileUri.toString(),
-          scheme: fileUri.scheme,
-          fsPath: fileUri.fsPath
-        });
         this.buttons = [
           {
-            icon: new vscode.ThemeIcon('beaker'),
+            icon: new vscode.ThemeIcon('play'),
             tooltip: 'Generate Unit Test',
             command: 'extension.generateTests',
             arguments: [fileUri]
@@ -70,13 +60,20 @@ export class FileTreeItem extends vscode.TreeItem {
         break;
       case FileTreeItemType.Method:
         this.contextValue = 'method';
-        // 使用更具体的方法符号图标
-        this.iconPath = new vscode.ThemeIcon('symbol-function');
+        if (label.startsWith('constructor')) {
+          this.iconPath = new vscode.ThemeIcon('key');
+        } else if (label.startsWith('_') || label.startsWith('#')) {
+          this.iconPath = new vscode.ThemeIcon('lock');
+        } else if (node && FileTreeProvider.isArrowFunction(node, label)) {
+          this.iconPath = new vscode.ThemeIcon('private-ports-view-icon');
+        } else {
+          this.iconPath = new vscode.ThemeIcon('symbol-method');
+        }
         this.command = command;
         break;
     }
 
-    // Enhanced tooltips
+    // Enhanced tooltips with file paths
     if (type === FileTreeItemType.Folder) {
       this.tooltip = `📁 ${fullPath}`;
     } else if (type === FileTreeItemType.File) {
