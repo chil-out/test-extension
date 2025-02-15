@@ -7,6 +7,11 @@ const TypeScript = require('tree-sitter-typescript');
 
 import { FileTreeItem, FileTreeItemType } from './FileTreeItem';
 
+interface MethodGroup {
+  className: string;
+  methods: Parser.SyntaxNode[];
+}
+
 export class FileTreeProvider implements vscode.TreeDataProvider<FileTreeItem> {
   private _onDidChangeTreeData: vscode.EventEmitter<FileTreeItem | undefined | void> = new vscode.EventEmitter<FileTreeItem | undefined | void>();
   readonly onDidChangeTreeData: vscode.Event<FileTreeItem | undefined | void> = this._onDidChangeTreeData.event;
@@ -67,9 +72,9 @@ export class FileTreeProvider implements vscode.TreeDataProvider<FileTreeItem> {
 
     // 处理其他情况
     if (element.type === FileTreeItemType.File) {
-      return this.getMethodsFromFile(element.fullPath);
-    } else if (element.type === FileTreeItemType.Folder) {
-      return this.getFileItems(element.fullPath);
+      return this.getClassGroups(element.fullPath);
+    } else if (element.type === FileTreeItemType.Class) {
+      return this.getMethodsForClass(element.fullPath, element.label);
     }
     
     return [];
@@ -309,6 +314,134 @@ private directoryContainsJsOrTs(dirPath: string): boolean {
     }
 }
 
+  private async getClassGroups(filePath: string): Promise<FileTreeItem[]> {
+    try {
+      const content = fs.readFileSync(filePath, 'utf8');
+      const ext = path.extname(filePath).toLowerCase();
+      const parser = ext === '.ts' ? this.tsParser : this.jsParser;
+      const tree = parser.parse(content);
+
+      // Group methods by class
+      const classGroups: Map<string, Parser.SyntaxNode[]> = new Map();
+      const defaultGroup: Parser.SyntaxNode[] = [];
+
+      // Find all class declarations
+      const classNodes = tree.rootNode.descendantsOfType('class_declaration');
+      classNodes.forEach(classNode => {
+        const className = classNode.childForFieldName('name')?.text || 'Anonymous Class';
+        classGroups.set(className, []);
+        
+        // Get all methods in this class
+        const methods = classNode.descendantsOfType('method_definition');
+        methods.forEach(method => {
+          classGroups.get(className)?.push(method);
+        });
+      });
+
+      // Handle standalone functions and methods
+      this.findMethods(tree.rootNode).forEach(node => {
+        if (!this.isMethodInClass(node)) {
+          defaultGroup.push(node);
+        }
+      });
+
+      // Create tree items
+      const items: FileTreeItem[] = [];
+
+      // Add class groups
+      classGroups.forEach((methods, className) => {
+        if (methods.length > 0) {
+          items.push(new FileTreeItem(
+            className,
+            FileTreeItemType.Class,
+            filePath,
+            vscode.TreeItemCollapsibleState.Expanded
+          ));
+        }
+      });
+
+      // Add default group if it has items
+      if (defaultGroup.length > 0) {
+        items.push(new FileTreeItem(
+          'Global Scope',
+          FileTreeItemType.Class,
+          filePath,
+          vscode.TreeItemCollapsibleState.Expanded
+        ));
+      }
+
+      return items;
+    } catch (error) {
+      console.error('Error parsing file:', error);
+      return [];
+    }
+  }
+
+  private async getMethodsForClass(filePath: string, className: string): Promise<FileTreeItem[]> {
+    const content = fs.readFileSync(filePath, 'utf8');
+    const ext = path.extname(filePath).toLowerCase();
+    const parser = ext === '.ts' ? this.tsParser : this.jsParser;
+    const tree = parser.parse(content);
+
+    let methods: Parser.SyntaxNode[] = [];
+    
+    if (className === 'Global Scope') {
+      // Get standalone functions
+      methods = this.findMethods(tree.rootNode).filter(node => !this.isMethodInClass(node));
+    } else {
+      // Get class methods
+      const classNode = tree.rootNode.descendantsOfType('class_declaration')
+        .find(node => node.childForFieldName('name')?.text === className);
+      
+      if (classNode) {
+        methods = classNode.descendantsOfType('method_definition');
+      }
+    }
+
+    return methods.map(node => this.createMethodTreeItem(node, filePath));
+  }
+
+  private isMethodInClass(node: Parser.SyntaxNode): boolean {
+    let parent = node.parent;
+    while (parent) {
+      if (parent.type === 'class_declaration') {
+        return true;
+      }
+      parent = parent.parent;
+    }
+    return false;
+  }
+
+  private createMethodTreeItem(node: Parser.SyntaxNode, filePath: string): FileTreeItem {
+    let label = '';
+    if (node.type === 'function_declaration') {
+      label = node.childForFieldName('name')?.text || '<anonymous>';
+    } else if (node.type === 'method_definition') {
+      label = node.childForFieldName('name')?.text || '<anonymous>';
+    } else if (node.type === 'arrow_function') {
+      label = '<anonymous arrow function>';
+    }
+    return new FileTreeItem(
+      label,
+      FileTreeItemType.Method,
+      filePath,
+      vscode.TreeItemCollapsibleState.None,
+      {
+        command: 'vscode.open',
+        title: 'Go to Method',
+        arguments: [
+          vscode.Uri.file(filePath),
+          {
+            selection: new vscode.Range(
+              new vscode.Position(node.startPosition.row, node.startPosition.column),
+              new vscode.Position(node.endPosition.row, node.endPosition.column)
+            )
+          }
+        ]
+      }
+    );
+  }
+
   // 简单递归遍历 AST 节点
   private traverse(node: Parser.SyntaxNode, callback: (node: Parser.SyntaxNode) => void) {
     callback(node);
@@ -318,5 +451,15 @@ private directoryContainsJsOrTs(dirPath: string): boolean {
         this.traverse(child, callback);
       }
     }
+  }
+
+  private findMethods(node: Parser.SyntaxNode): Parser.SyntaxNode[] {
+    const methods: Parser.SyntaxNode[] = [];
+    this.traverse(node, (n) => {
+      if (n.type === 'function_declaration' || n.type === 'method_definition' || n.type === 'arrow_function') {
+        methods.push(n);
+      }
+    });
+    return methods;
   }
 }

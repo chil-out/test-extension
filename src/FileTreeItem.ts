@@ -4,6 +4,7 @@ import * as path from 'path';
 export enum FileTreeItemType {
   Folder,
   File,
+  Class,   // Add new type for class
   Method
 }
 
@@ -39,6 +40,10 @@ export class FileTreeItem extends vscode.TreeItem {
         this.command = command;
         // Show file extension in the label
         this.label = path.basename(fullPath);
+        break;
+      case FileTreeItemType.Class:
+        this.contextValue = 'class';
+        this.iconPath = new vscode.ThemeIcon('symbol-class');
         break;
       case FileTreeItemType.Method:
         this.contextValue = 'method';
