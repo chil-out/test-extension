@@ -42,17 +42,19 @@ export class FileTreeItem extends vscode.TreeItem {
         this.iconPath = new vscode.ThemeIcon('file-code');
         // Show file extension in the label
         this.label = path.basename(fullPath);
-        // Add test generation button with icon only
         const absolutePath = path.normalize(fullPath);
         const fileUri = vscode.Uri.file(absolutePath);
-        this.buttons = [
-          {
-            icon: new vscode.ThemeIcon('play'),
-            tooltip: 'Generate Unit Test',
-            command: 'extension.generateTests',
-            arguments: [fileUri]
-          }
-        ];
+        
+        // Configure the test generation button
+        this.buttons = [{
+          icon: new vscode.ThemeIcon('run'),
+          tooltip: 'Generate Unit Test',
+          command: 'extension.generateTests',
+          arguments: [fileUri]
+        }];
+
+        // Remove the default command to prevent double-click behavior
+        this.command = undefined;
         break;
       case FileTreeItemType.Class:
         this.contextValue = 'class';
