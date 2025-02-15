@@ -32,21 +32,53 @@ export class FileTreeProvider implements vscode.TreeDataProvider<FileTreeItem> {
     if (!vscode.workspace.workspaceFolders) {
       return [];
     }
-    // 如果没有传入元素，则返回工作区根目录下的文件夹列表
+
+    const rootPath = vscode.workspace.workspaceFolders[0].uri.fsPath;
+
+    // 如果没有传入元素，返回顶层"TESTABLE CODES"目录
     if (!element) {
-      const rootPath = vscode.workspace.workspaceFolders[0].uri.fsPath;
-      return this.getFileItems(rootPath);
-    } else {
-      // 如果元素为文件，则返回解析出来的方法列表（如果已经解析过）
-      if (element.type === FileTreeItemType.File) {
-        return this.getMethodsFromFile(element.fullPath);
-      } else if (element.type === FileTreeItemType.Folder) {
-        return this.getFileItems(element.fullPath);
-      } else {
-        // 方法节点没有子节点
-        return [];
-      }
+      return [
+        new FileTreeItem(
+          'TESTABLE CODES',
+          FileTreeItemType.Folder,
+          'testable_codes_root',  // 使用特殊标识符
+          vscode.TreeItemCollapsibleState.Expanded
+        )
+      ];
     }
+
+    // 如果是顶层"TESTABLE CODES"目录，返回项目文件夹
+    if (element.fullPath === 'testable_codes_root') {
+      const projectName = this.getProjectName(rootPath);
+      return [
+        new FileTreeItem(
+          projectName,
+          FileTreeItemType.Folder,
+          rootPath,
+          vscode.TreeItemCollapsibleState.Expanded
+        )
+      ];
+    }
+
+    // 如果是项目根文件夹，返回其内容
+    if (element.fullPath === rootPath) {
+      return this.getFileItems(rootPath);
+    }
+
+    // 处理其他情况
+    if (element.type === FileTreeItemType.File) {
+      return this.getMethodsFromFile(element.fullPath);
+    } else if (element.type === FileTreeItemType.Folder) {
+      return this.getFileItems(element.fullPath);
+    }
+    
+    return [];
+  }
+
+  private getProjectName(rootPath: string): string {
+    // 获取项目名称（使用目录名）
+    const parts = rootPath.split('/');
+    return parts[parts.length - 1] || 'Project';
   }
 
   // Add helper method to check if file is a test file
