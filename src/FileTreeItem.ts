@@ -44,16 +44,23 @@ export class FileTreeItem extends vscode.TreeItem {
         } else {
           this.iconPath = new vscode.ThemeIcon('file');
         }
-        this.command = command;
         // Show file extension in the label
         this.label = path.basename(fullPath);
         // Add test generation button with icon
+        const absolutePath = path.normalize(fullPath);
+        const fileUri = vscode.Uri.file(absolutePath);
+        console.log('Creating button with URI:', {
+          path: absolutePath,
+          uri: fileUri.toString(),
+          scheme: fileUri.scheme,
+          fsPath: fileUri.fsPath
+        });
         this.buttons = [
           {
             icon: new vscode.ThemeIcon('beaker'),
-            tooltip: '生成单元测试',
+            tooltip: 'Generate Unit Test',
             command: 'extension.generateTests',
-            arguments: [vscode.Uri.file(fullPath)]
+            arguments: [fileUri]
           }
         ];
         break;

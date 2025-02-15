@@ -132,10 +132,16 @@ export class FileTreeProvider implements vscode.TreeDataProvider<FileTreeItem> {
         } else if (stats.isFile() && 
                   (ext === '.js' || ext === '.ts') && 
                   !this.isTestFile(entry)) {
+            const absolutePath = path.resolve(fullPath);
+            console.log('Creating file item with path:', {
+                original: fullPath,
+                absolute: absolutePath,
+                normalized: path.normalize(absolutePath)
+            });
             items.push(new FileTreeItem(
                 entry,
                 FileTreeItemType.File,
-                fullPath,
+                path.normalize(absolutePath),
                 vscode.TreeItemCollapsibleState.Collapsed
             ));
         }

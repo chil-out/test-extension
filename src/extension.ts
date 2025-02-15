@@ -16,22 +16,59 @@ export function activate(context: vscode.ExtensionContext) {
 	);
 	context.subscriptions.push(disposableCodeLens);
 
-	// 注册命令，例如 "extension.generateTests"
-	let disposable = vscode.commands.registerCommand('extension.generateTests', (fileUri?: vscode.Uri) => {
-		let targetUri = fileUri;
-
-		// If no URI was passed, use the active editor
-		if (!targetUri && vscode.window.activeTextEditor) {
-			targetUri = vscode.window.activeTextEditor.document.uri;
+	// Register the test generation command
+	let disposable = vscode.commands.registerCommand('extension.generateTests', async (fileUri?: vscode.Uri) => {
+		console.log('Command triggered with URI:', {
+			uri: fileUri?.toString(),
+			scheme: fileUri?.scheme,
+			path: fileUri?.path,
+			fsPath: fileUri?.fsPath
+		});
+		
+		// Ensure we have a valid URI
+		if (!fileUri || !fileUri.scheme) {
+			if (vscode.window.activeTextEditor) {
+				fileUri = vscode.window.activeTextEditor.document.uri;
+				console.log('Using active editor URI:', {
+					uri: fileUri.toString(),
+					scheme: fileUri.scheme,
+					path: fileUri.path,
+					fsPath: fileUri.fsPath
+				});
+			} else {
+				vscode.window.showErrorMessage('No file selected for test generation');
+				return;
+			}
 		}
 
-		if (!targetUri) {
-			vscode.window.showErrorMessage('No file selected for test generation');
+		try {
+			// Convert to proper file URI if needed
+			if (fileUri.scheme !== 'file') {
+				fileUri = vscode.Uri.file(fileUri.path);
+				console.log('Converted to file URI:', {
+					uri: fileUri.toString(),
+					scheme: fileUri.scheme,
+					path: fileUri.path,
+					fsPath: fileUri.fsPath
+				});
+			}
+
+			console.log('Checking file exists:', fileUri.fsPath);
+			const stat = await vscode.workspace.fs.stat(fileUri);
+			console.log('File stat:', stat.type === vscode.FileType.File ? 'Is a file' : 'Not a file');
+
+			if (stat.type !== vscode.FileType.File) {
+				vscode.window.showErrorMessage('Selected path is not a file');
+				return;
+			}
+
+			// Call test generation with the file URI
+			generateTests(fileUri);
+		} catch (error: any) {
+			console.error('Error in command handler:', error);
+			vscode.window.showErrorMessage(`Error accessing file: ${error?.message || 'Unknown error'}`);
 			return;
 		}
-
-		// Call test generation with the file URI
-		generateTests(targetUri);
 	});
 
 	context.subscriptions.push(disposable);
@@ -52,28 +89,27 @@ export function activate(context: vscode.ExtensionContext) {
 }
 
 function generateTests(targetUri: vscode.Uri) {
+	if (!targetUri || !targetUri.fsPath) {
+		vscode.window.showErrorMessage('Invalid file selected for test generation');
+		return;
+	}
+
 	const config = vscode.workspace.getConfiguration('testGenerator');
 	const toolPath = config.get<string>('toolPath');
 
 	if (!toolPath) {
-		vscode.window.showErrorMessage('未配置测试生成工具路径');
+		vscode.window.showErrorMessage('Test generation tool path not configured');
 		return;
 	}
 
-	const editor = vscode.window.activeTextEditor;
-	if (!editor) {
-		vscode.window.showErrorMessage('没有打开任何文件');
-		return;
-	}
-
-	// 获取当前工作区根目录
+	// Get workspace root directory
 	const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
 	if (!workspaceFolder) {
-		vscode.window.showErrorMessage('未打开工作区');
+		vscode.window.showErrorMessage('No workspace is open');
 		return;
 	}
 
-	// 获取当前文件相关信息
+	// Get current file information
 	const sourceFilePath = targetUri.fsPath;
 	const fileNameWithoutExt = sourceFilePath.replace(/\.[^/.]+$/, '');
 	const testFilePath = `${fileNameWithoutExt}.test.js`;
