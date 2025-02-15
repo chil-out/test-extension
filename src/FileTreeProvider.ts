@@ -136,12 +136,7 @@ export class FileTreeProvider implements vscode.TreeDataProvider<FileTreeItem> {
                 entry,
                 FileTreeItemType.File,
                 fullPath,
-                vscode.TreeItemCollapsibleState.Collapsed,
-                {
-                    command: 'extension.generateTests',
-                    title: 'Generate Tests',
-                    arguments: [vscode.Uri.file(fullPath)] // Pass the file URI to the command
-                }
+                vscode.TreeItemCollapsibleState.Collapsed
             ));
         }
     });

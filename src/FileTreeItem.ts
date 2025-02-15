@@ -9,6 +9,13 @@ export enum FileTreeItemType {
 }
 
 export class FileTreeItem extends vscode.TreeItem {
+  buttons?: readonly {
+    icon: vscode.ThemeIcon;
+    tooltip: string;
+    command: string;
+    arguments?: any[];
+  }[];
+
   constructor(
     public readonly label: string,
     public readonly type: FileTreeItemType,
@@ -40,6 +47,15 @@ export class FileTreeItem extends vscode.TreeItem {
         this.command = command;
         // Show file extension in the label
         this.label = path.basename(fullPath);
+        // Add test generation button with icon
+        this.buttons = [
+          {
+            icon: new vscode.ThemeIcon('beaker'),
+            tooltip: '生成单元测试',
+            command: 'extension.generateTests',
+            arguments: [vscode.Uri.file(fullPath)]
+          }
+        ];
         break;
       case FileTreeItemType.Class:
         this.contextValue = 'class';
