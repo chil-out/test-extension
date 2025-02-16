@@ -45,6 +45,13 @@ export class FileTreeItem extends vscode.TreeItem {
         const absolutePath = path.normalize(fullPath);
         const fileUri = vscode.Uri.file(absolutePath);
         
+        // Add command to open file when clicked
+        this.command = {
+          command: 'vscode.open',
+          title: 'Open File',
+          arguments: [fileUri]
+        };
+        
         // Configure the test generation button
         this.buttons = [{
           icon: new vscode.ThemeIcon('run'),
@@ -52,9 +59,6 @@ export class FileTreeItem extends vscode.TreeItem {
           command: 'extension.generateTests',
           arguments: [fileUri]
         }];
-
-        // Remove the default command to prevent double-click behavior
-        this.command = undefined;
         break;
       case FileTreeItemType.Class:
         this.contextValue = 'class';
