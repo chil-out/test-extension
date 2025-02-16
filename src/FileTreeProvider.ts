@@ -4,6 +4,7 @@ import * as path from 'path';
 import Parser from 'tree-sitter';
 import * as JavaScript from 'tree-sitter-javascript';
 const TypeScript = require('tree-sitter-typescript');
+import ignore from 'ignore';
 
 import { FileTreeItem, FileTreeItemType } from './FileTreeItem';
 
@@ -17,6 +18,7 @@ export class FileTreeProvider implements vscode.TreeDataProvider<FileTreeItem> {
   readonly onDidChangeTreeData: vscode.Event<FileTreeItem | undefined | void> = this._onDidChangeTreeData.event;
   private jsParser: Parser;
   private tsParser: Parser;
+  private gitIgnore: any;
 
   // Add static method to detect arrow functions
   public static isArrowFunction(node: Parser.SyntaxNode, label: string): boolean {
@@ -52,6 +54,39 @@ export class FileTreeProvider implements vscode.TreeDataProvider<FileTreeItem> {
     this.tsParser = new Parser();
     this.jsParser.setLanguage(JavaScript);
     this.tsParser.setLanguage(TypeScript.typescript);
+    this.initGitIgnore();
+  }
+
+  private initGitIgnore() {
+    this.gitIgnore = ignore();
+    if (vscode.workspace.workspaceFolders) {
+      const rootPath = vscode.workspace.workspaceFolders[0].uri.fsPath;
+      const gitIgnorePath = path.join(rootPath, '.gitignore');
+      
+      if (fs.existsSync(gitIgnorePath)) {
+        try {
+          const gitIgnoreContent = fs.readFileSync(gitIgnorePath, 'utf8');
+          this.gitIgnore.add(gitIgnoreContent);
+        } catch (error) {
+          console.error('Error reading .gitignore:', error);
+        }
+      }
+    }
+  }
+
+  private isIgnored(filePath: string): boolean {
+    if (!this.gitIgnore) {
+      return false;
+    }
+    
+    // 获取相对于工作区的路径
+    const rootPath = vscode.workspace.workspaceFolders?.[0].uri.fsPath;
+    if (!rootPath) {
+      return false;
+    }
+    
+    const relativePath = path.relative(rootPath, filePath);
+    return this.gitIgnore.ignores(relativePath);
   }
 
   refresh(): void {
@@ -194,6 +229,12 @@ export class FileTreeProvider implements vscode.TreeDataProvider<FileTreeItem> {
       }
 
       const fullPath = path.join(dirPath, entry);
+      
+      // 检查文件是否被 .gitignore 忽略
+      if (this.isIgnored(fullPath)) {
+        return;
+      }
+
       const stats = fs.statSync(fullPath);
       const ext = path.extname(entry).toLowerCase();
 
@@ -228,19 +269,25 @@ export class FileTreeProvider implements vscode.TreeDataProvider<FileTreeItem> {
   // 检查目录中是否包含 JavaScript 或 TypeScript 文件
   private directoryContainsJsOrTs(dirPath: string): boolean {
     try {
-      // 排除 node_modules 目录
-      if (dirPath.includes('node_modules') || this.isTestFile(dirPath)) {
+      // 排除 node_modules 目录和被 .gitignore 忽略的目录
+      if (dirPath.includes('node_modules') || this.isTestFile(dirPath) || this.isIgnored(dirPath)) {
         return false;
       }
 
       const entries = fs.readdirSync(dirPath);
       for (const entry of entries) {
-        // 跳过 node_modules 目录
+        // 跳过 node_modules 目录和被忽略的文件
         if (entry === 'node_modules' || this.isTestFile(entry)) {
           continue;
         }
 
         const fullPath = path.join(dirPath, entry);
+        
+        // 检查文件是否被 .gitignore 忽略
+        if (this.isIgnored(fullPath)) {
+          continue;
+        }
+
         const stats = fs.statSync(fullPath);
 
         if (stats.isDirectory()) {
