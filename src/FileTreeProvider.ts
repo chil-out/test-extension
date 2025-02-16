@@ -5,6 +5,7 @@ import Parser from 'tree-sitter';
 import * as JavaScript from 'tree-sitter-javascript';
 const TypeScript = require('tree-sitter-typescript');
 import ignore from 'ignore';
+import * as xml2js from 'xml2js';
 
 import { FileTreeItem, FileTreeItemType } from './FileTreeItem';
 
@@ -14,11 +15,12 @@ interface MethodGroup {
 }
 
 export class FileTreeProvider implements vscode.TreeDataProvider<FileTreeItem> {
-  private _onDidChangeTreeData: vscode.EventEmitter<FileTreeItem | undefined | void> = new vscode.EventEmitter<FileTreeItem | undefined | void>();
-  readonly onDidChangeTreeData: vscode.Event<FileTreeItem | undefined | void> = this._onDidChangeTreeData.event;
+  private _onDidChangeTreeData: vscode.EventEmitter<FileTreeItem | undefined | null | void> = new vscode.EventEmitter<FileTreeItem | undefined | null | void>();
+  readonly onDidChangeTreeData: vscode.Event<FileTreeItem | undefined | null | void> = this._onDidChangeTreeData.event;
   private jsParser: Parser;
   private tsParser: Parser;
   private gitIgnore: any;
+  private static coverageData: Map<string, number> = new Map();
 
   // Add static method to detect arrow functions
   public static isArrowFunction(node: Parser.SyntaxNode, label: string): boolean {
@@ -55,6 +57,8 @@ export class FileTreeProvider implements vscode.TreeDataProvider<FileTreeItem> {
     this.jsParser.setLanguage(JavaScript);
     this.tsParser.setLanguage(TypeScript.typescript);
     this.initGitIgnore();
+    // Initialize coverage data
+    this.updateCoverageData();
   }
 
   private initGitIgnore() {
@@ -89,7 +93,184 @@ export class FileTreeProvider implements vscode.TreeDataProvider<FileTreeItem> {
     return this.gitIgnore.ignores(relativePath);
   }
 
-  refresh(): void {
+  // Static method to get file coverage
+  public static getFileCoverage(filePath: string): number | undefined {
+    return FileTreeProvider.coverageData.get(filePath);
+  }
+
+  // Method to update coverage data
+  private async updateCoverageData() {
+    const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
+    if (!workspaceFolder) return;
+
+    const workspacePath = workspaceFolder.uri.fsPath;
+    
+    // Try different coverage report formats
+    await Promise.all([
+      this.updateFromCobertura(workspacePath),
+      this.updateFromJacoco(workspacePath),
+      this.updateFromLcov(workspacePath)
+    ]);
+  }
+
+  // Update from Cobertura XML report
+  private async updateFromCobertura(workspacePath: string) {
+    const coverageFile = path.join(workspacePath, 'coverage', 'coverage.xml');
+    
+    try {
+      if (!fs.existsSync(coverageFile)) {
+        return;
+      }
+
+      const coverageXml = fs.readFileSync(coverageFile, 'utf-8');
+      const parser = new xml2js.Parser();
+      const result = await parser.parseStringPromise(coverageXml);
+
+      // Parse coverage data from the XML
+      if (result.coverage && result.coverage.packages && result.coverage.packages[0].package) {
+        for (const pkg of result.coverage.packages[0].package) {
+          if (pkg.classes && pkg.classes[0].class) {
+            for (const cls of pkg.classes[0].class) {
+              const filename = cls.$.filename;
+              const lines = cls.lines && cls.lines[0].line;
+              if (lines) {
+                const totalLines = lines.length;
+                const coveredLines = lines.filter((line: any) => parseInt(line.$.hits) > 0).length;
+                const coverage = Math.round((coveredLines / totalLines) * 100);
+                
+                // Store absolute path for the file
+                const absolutePath = path.resolve(workspacePath, filename);
+                FileTreeProvider.coverageData.set(absolutePath, coverage);
+              }
+            }
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Error updating Cobertura coverage data:', error);
+    }
+  }
+
+  // Update from JaCoCo XML report
+  private async updateFromJacoco(workspacePath: string) {
+    const coverageFile = path.join(workspacePath, 'coverage', 'jacoco.xml');
+    
+    try {
+      if (!fs.existsSync(coverageFile)) {
+        return;
+      }
+
+      const coverageXml = fs.readFileSync(coverageFile, 'utf-8');
+      const parser = new xml2js.Parser();
+      const result = await parser.parseStringPromise(coverageXml);
+
+      if (result.report && result.report.package) {
+        for (const pkg of result.report.package) {
+          if (pkg.sourcefile) {
+            for (const sourceFile of pkg.sourcefile) {
+              const filename = sourceFile.$.name;
+              const packageName = pkg.$.name;
+              const fullPath = packageName ? path.join(packageName.replace(/\./g, '/'), filename) : filename;
+              
+              // Get line coverage
+              const lines = sourceFile.line || [];
+              if (lines.length > 0) {
+                const totalLines = lines.length;
+                const coveredLines = lines.filter((line: any) => 
+                  parseInt(line.$.ci) > 0 || parseInt(line.$.cb) > 0
+                ).length;
+                const coverage = Math.round((coveredLines / totalLines) * 100);
+                
+                const absolutePath = path.resolve(workspacePath, fullPath);
+                FileTreeProvider.coverageData.set(absolutePath, coverage);
+              }
+            }
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Error updating JaCoCo coverage data:', error);
+    }
+  }
+
+  // Update from LCOV info file
+  private async updateFromLcov(workspacePath: string) {
+    const coverageFile = path.join(workspacePath, 'coverage', 'lcov.info');
+    
+    try {
+      if (!fs.existsSync(coverageFile)) {
+        return;
+      }
+
+      const lcovContent = fs.readFileSync(coverageFile, 'utf-8');
+      const records = this.parseLcov(lcovContent);
+
+      for (const record of records) {
+        if (record.lines) {
+          const coverage = Math.round((record.lines.hit / record.lines.found) * 100);
+          const absolutePath = path.resolve(workspacePath, record.file);
+          FileTreeProvider.coverageData.set(absolutePath, coverage);
+        }
+      }
+    } catch (error) {
+      console.error('Error updating LCOV coverage data:', error);
+    }
+  }
+
+  // Parse LCOV info file content
+  private parseLcov(content: string): Array<{
+    file: string;
+    lines?: { found: number; hit: number };
+  }> {
+    const records: Array<{
+      file: string;
+      lines?: { found: number; hit: number };
+    }> = [];
+    
+    let currentRecord: {
+      file: string;
+      lines?: { found: number; hit: number };
+    } | null = null;
+
+    const lines = content.split('\n');
+    for (const line of lines) {
+      const parts = line.trim().split(':');
+      const type = parts[0];
+      const data = parts[1];
+
+      switch (type) {
+        case 'SF':
+          // Start a new file record
+          currentRecord = { file: data };
+          records.push(currentRecord);
+          break;
+        case 'LF':
+          // Lines found
+          if (currentRecord) {
+            if (!currentRecord.lines) {
+              currentRecord.lines = { found: 0, hit: 0 };
+            }
+            currentRecord.lines.found = parseInt(data);
+          }
+          break;
+        case 'LH':
+          // Lines hit
+          if (currentRecord && currentRecord.lines) {
+            currentRecord.lines.hit = parseInt(data);
+          }
+          break;
+        case 'end_of_record':
+          currentRecord = null;
+          break;
+      }
+    }
+
+    return records;
+  }
+
+  // Refresh tree data and coverage
+  public async refresh(): Promise<void> {
+    await this.updateCoverageData();
     this._onDidChangeTreeData.fire();
   }
 

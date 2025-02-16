@@ -51,6 +51,28 @@ export class FileTreeItem extends vscode.TreeItem {
           title: 'Open File',
           arguments: [fileUri]
         };
+
+        // Add coverage percentage if available
+        const coverage = FileTreeProvider.getFileCoverage(absolutePath);
+        if (coverage !== undefined) {
+          // Format coverage number with padding
+          const coverageText = coverage.toString().padStart(3, ' ');
+          
+          // Use different unicode symbols for different coverage levels
+          let statusSymbol = coverage >= 80 ? '●' :  // Filled circle
+                            coverage >= 50 ? '◐' :  // Half circle
+                                           '○';    // Empty circle
+          
+          this.description = `${statusSymbol} ${coverageText}%`;
+          
+          // Simple tooltip with coverage information
+          this.tooltip = new vscode.MarkdownString(
+            `**Coverage: ${coverage}%**\n\n` +
+            (coverage >= 80 ? '● Good coverage' :
+             coverage >= 50 ? '◐ Coverage needs improvement' :
+                            '○ Insufficient coverage')
+          );
+        }
         
         // Configure the test generation button
         this.buttons = [{
