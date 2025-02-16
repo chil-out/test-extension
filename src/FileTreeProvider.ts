@@ -130,6 +130,9 @@ export class FileTreeProvider implements vscode.TreeDataProvider<FileTreeItem> {
       '-spec.',
       '__tests__',
       '__test__',
+      'setuptest.',
+      'setuptests.js',
+      'setuptests.ts',
       // Test framework configs
       'vitest.config.',
       'jest.config.',
@@ -141,6 +144,9 @@ export class FileTreeProvider implements vscode.TreeDataProvider<FileTreeItem> {
       'mocha.opts',
       'ava.config.',
       'jasmine.json',
+      'test.config.',
+      'testSetup.',
+      'test.setup.',
       // Tool configs
       '.eslintrc.',
       '.prettierrc.',
@@ -158,7 +164,19 @@ export class FileTreeProvider implements vscode.TreeDataProvider<FileTreeItem> {
       'yarn.lock',
       'pnpm-lock.yaml'
     ];
-    return testPatterns.some(pattern => filename.toLowerCase().includes(pattern));
+    
+    // 获取文件的基本名称（不含路径）并转换为小写
+    const basename = path.basename(filename).toLowerCase();
+    
+    return testPatterns.some(pattern => {
+      const lowercasePattern = pattern.toLowerCase();
+      // 对于精确匹配的文件名（如 setuptest.js），进行完整匹配
+      if (pattern.includes('.js') || pattern.includes('.ts') || pattern.includes('.jsx') || pattern.includes('.tsx')) {
+        return basename === lowercasePattern;
+      }
+      // 对于其他模式，使用包含匹配
+      return basename.includes(lowercasePattern);
+    });
   }
 
   // 递归获取目录下的文件和文件夹
