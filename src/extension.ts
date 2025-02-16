@@ -3,8 +3,13 @@ import { exec } from 'child_process';
 import { TestCodeLensProvider } from './CodeLensProvider';
 import { FileTreeProvider } from './FileTreeProvider';
 
-export function activate(context: vscode.ExtensionContext) {
+// Create a persistent output channel
+let outputChannel: vscode.OutputChannel;
 
+export function activate(context: vscode.ExtensionContext) {
+	// Initialize the output channel
+	outputChannel = vscode.window.createOutputChannel('Test Generator');
+	context.subscriptions.push(outputChannel);
 
 	let codeLensProvider = new TestCodeLensProvider();
 	let disposableCodeLens = vscode.languages.registerCodeLensProvider(
@@ -153,6 +158,14 @@ function generateTests(targetUri: vscode.Uri) {
 		` --max-attempts 2` +
 		` --include-files "${packageJsonPath}" "${vitestConfigPath}"`;
 
+	// Clear previous output and show the channel
+	outputChannel.clear();
+	outputChannel.show(true);  // true means preserve focus
+	outputChannel.appendLine('🚀 Starting test generation...');
+	outputChannel.appendLine(`📂 Source file: ${sourceFilePath}`);
+	outputChannel.appendLine(`📝 Test file: ${testFilePath}`);
+	outputChannel.appendLine('\n🔄 Executing command...\n');
+
 	vscode.window.withProgress({
 		location: vscode.ProgressLocation.Notification,
 		title: "Generating tests...",
@@ -163,9 +176,23 @@ function generateTests(targetUri: vscode.Uri) {
 		return new Promise<void>((resolve, reject) => {
 			exec(command, { cwd: workspacePath }, async (error, stdout, stderr) => {
 				if (error) {
+					outputChannel.appendLine('\n❌ Error executing command:');
+					outputChannel.appendLine(error.message);
+					if (stderr) {
+						outputChannel.appendLine('\nError output:');
+						outputChannel.appendLine(stderr);
+					}
 					reject(error);
 					return;
 				}
+
+				if (stderr) {
+					outputChannel.appendLine('\n⚠️ Warning output:');
+					outputChannel.appendLine(stderr);
+				}
+
+				outputChannel.appendLine('\n📋 Command output:');
+				outputChannel.appendLine(stdout);
 
 				progress.report({ increment: 50, message: "Test generation complete, opening file..." });
 
@@ -175,14 +202,14 @@ function generateTests(targetUri: vscode.Uri) {
 					const doc = await vscode.workspace.openTextDocument(testFileUri);
 					await vscode.window.showTextDocument(doc);
 
-					// Show command execution log in output panel
-					const outputChannel = vscode.window.createOutputChannel('Test Generator');
-					outputChannel.appendLine(stdout);
-					outputChannel.show();
+					outputChannel.appendLine('\n✅ Test generation completed successfully!');
+					outputChannel.appendLine(`📄 Generated test file: ${testFilePath}`);
 
 					progress.report({ increment: 100, message: "Done!" });
 					resolve();
-				} catch (err) {
+				} catch (err: any) {
+					outputChannel.appendLine('\n❌ Error opening generated test file:');
+					outputChannel.appendLine(err.message);
 					reject(err);
 				}
 			});
@@ -191,4 +218,5 @@ function generateTests(targetUri: vscode.Uri) {
 		});
 	});
 }
+
 export function deactivate() { }
