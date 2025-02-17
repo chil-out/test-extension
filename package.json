@@ -37,8 +37,9 @@
         "icon": "$(run)"
       },
       {
-        "command": "extension.refreshFileTree",
-        "title": "Refresh File Tree"
+        "command": "extension.refreshCoverage",
+        "title": "Refresh Coverage",
+        "icon": "$(refresh)"
       }
     ],
     "menus": {
@@ -59,6 +60,18 @@
           "command": "extension.generateTests",
           "when": "view == fileExplorerWithMethods && viewItem == file",
           "group": "1_modification"
+        },
+        {
+          "command": "extension.refreshCoverage",
+          "when": "view == fileExplorerWithMethods",
+          "group": "navigation"
+        }
+      ],
+      "view/title": [
+        {
+          "command": "extension.refreshCoverage",
+          "when": "view == fileExplorerWithMethods",
+          "group": "navigation"
         }
       ]
     },

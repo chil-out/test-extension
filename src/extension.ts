@@ -87,8 +87,10 @@ export function activate(context: vscode.ExtensionContext) {
 	context.subscriptions.push(treeView);
 
 	// Register refresh command
-	let disposableRefresh = vscode.commands.registerCommand('extension.refreshFileTree', () => {
+	let disposableRefresh = vscode.commands.registerCommand('extension.refreshCoverage', () => {
+		outputChannel.appendLine('🔄 Refreshing coverage data...');
 		fileTreeProvider.refresh();
+		outputChannel.appendLine('✅ Coverage data refreshed');
 	});
 	context.subscriptions.push(disposableRefresh);
 
