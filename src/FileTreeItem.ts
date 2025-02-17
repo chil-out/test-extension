@@ -11,6 +11,8 @@ export enum FileTreeItemType {
 }
 
 export class FileTreeItem extends vscode.TreeItem {
+  private static lastCoverage = new Map<string, number>();
+
   buttons?: readonly {
     icon: vscode.ThemeIcon;
     tooltip: string;
@@ -58,20 +60,58 @@ export class FileTreeItem extends vscode.TreeItem {
           // Format coverage number with padding
           const coverageText = coverage.toString().padStart(3, ' ');
           
+          // Get previous coverage for comparison
+          const previousCoverage = FileTreeItem.lastCoverage.get(absolutePath);
+          const coverageChanged = previousCoverage !== undefined && previousCoverage !== coverage;
+          
           // Use different unicode symbols for different coverage levels
           let statusSymbol = coverage >= 80 ? '●' :  // Filled circle
                             coverage >= 50 ? '◐' :  // Half circle
                                            '○';    // Empty circle
+
+          // Create markdown string with animation if coverage changed
+          const markdownString = new vscode.MarkdownString();
+          if (coverageChanged) {
+            const trend = coverage > previousCoverage! ? '📈' : '📉';
+            const difference = Math.abs(coverage - previousCoverage!);
+            const changeColor = coverage > previousCoverage! ? '$(testing-passed-icon)' : '$(testing-failed-icon)';
+            
+            this.description = `${statusSymbol} ${coverageText}% ${trend}`;
+            
+            // Add animation class based on change
+            markdownString.appendMarkdown(`**Coverage: ${coverage}%**\n\n`);
+            markdownString.appendMarkdown(`${changeColor} ${coverage > previousCoverage! ? 'Increased' : 'Decreased'} by ${difference.toFixed(1)}%\n\n`);
+            markdownString.appendMarkdown(coverage >= 80 ? '● Good coverage' :
+                                        coverage >= 50 ? '◐ Coverage needs improvement' :
+                                                       '○ Insufficient coverage');
+            
+            // Add custom CSS animation
+            markdownString.supportHtml = true;
+            markdownString.appendMarkdown(`
+              <style>
+                .coverage-change {
+                  animation: pulse 1s ease-in-out;
+                }
+                @keyframes pulse {
+                  0% { opacity: 0.5; }
+                  50% { opacity: 1; }
+                  100% { opacity: 0.5; }
+                }
+              </style>
+              <div class="coverage-change"></div>
+            `);
+          } else {
+            this.description = `${statusSymbol} ${coverageText}%`;
+            markdownString.appendMarkdown(`**Coverage: ${coverage}%**\n\n` +
+              (coverage >= 80 ? '● Good coverage' :
+               coverage >= 50 ? '◐ Coverage needs improvement' :
+                              '○ Insufficient coverage'));
+          }
+
+          // Update last known coverage
+          FileTreeItem.lastCoverage.set(absolutePath, coverage);
           
-          this.description = `${statusSymbol} ${coverageText}%`;
-          
-          // Simple tooltip with coverage information
-          this.tooltip = new vscode.MarkdownString(
-            `**Coverage: ${coverage}%**\n\n` +
-            (coverage >= 80 ? '● Good coverage' :
-             coverage >= 50 ? '◐ Coverage needs improvement' :
-                            '○ Insufficient coverage')
-          );
+          this.tooltip = markdownString;
         }
         
         // Configure the test generation button

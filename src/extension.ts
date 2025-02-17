@@ -22,6 +22,94 @@ export function activate(context: vscode.ExtensionContext) {
 	);
 	context.subscriptions.push(disposableCodeLens);
 
+	// Register TreeDataProvider
+	const fileTreeProvider = new FileTreeProvider();
+	const treeView = vscode.window.createTreeView('fileExplorerWithMethods', {
+		treeDataProvider: fileTreeProvider,
+		showCollapseAll: true
+	});
+	context.subscriptions.push(treeView);
+
+	// Watch for coverage file changes
+	const config = vscode.workspace.getConfiguration('testGenerator');
+	const coveragePath = config.get<string>('coveragePath', 'coverage/coverage.xml');
+	
+	const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
+	if (workspaceFolder) {
+		const coverageWatcher = vscode.workspace.createFileSystemWatcher(
+			new vscode.RelativePattern(workspaceFolder, `**/${coveragePath}`),
+			false, // Don't ignore create
+			false, // Don't ignore change
+			false  // Don't ignore delete
+		);
+
+		// Refresh when coverage file changes
+		coverageWatcher.onDidCreate(() => {
+			fileTreeProvider.refresh();
+		});
+		coverageWatcher.onDidChange(() => {
+			fileTreeProvider.refresh();
+		});
+		coverageWatcher.onDidDelete(() => {
+			fileTreeProvider.refresh();
+		});
+
+		context.subscriptions.push(coverageWatcher);
+	}
+
+	// Register configuration command
+	let disposableConfig = vscode.commands.registerCommand('extension.openTestConfig', () => {
+		const { ConfigurationView } = require('./ConfigurationView');
+		ConfigurationView.createOrShow(context.extensionUri);
+	});
+	context.subscriptions.push(disposableConfig);
+
+	// Register refresh command
+	let disposableRefresh = vscode.commands.registerCommand('extension.refreshCoverage', () => {
+		outputChannel.appendLine('🔄 Refreshing coverage data...');
+		fileTreeProvider.refresh();
+		outputChannel.appendLine('✅ Coverage data refreshed');
+	});
+	context.subscriptions.push(disposableRefresh);
+
+	// Auto refresh when configuration changes
+	context.subscriptions.push(
+		vscode.workspace.onDidChangeConfiguration(e => {
+			if (e.affectsConfiguration('testGenerator.coveragePath')) {
+				// Update coverage file watcher if coverage path changes
+				const newCoveragePath = vscode.workspace.getConfiguration('testGenerator').get<string>('coveragePath', 'coverage/coverage.xml');
+				if (workspaceFolder) {
+					const newWatcher = vscode.workspace.createFileSystemWatcher(
+						new vscode.RelativePattern(workspaceFolder, `**/${newCoveragePath}`),
+						false, false, false
+					);
+					context.subscriptions.push(newWatcher);
+				}
+			}
+			fileTreeProvider.refresh();
+		})
+	);
+
+	// Auto refresh when files change
+	context.subscriptions.push(
+		vscode.workspace.onDidSaveTextDocument((document) => {
+			// Check if the saved file is a test file
+			if (document.fileName.includes('.test.') || document.fileName.includes('.spec.')) {
+				outputChannel.appendLine('🔄 Test file saved, refreshing coverage data...');
+				fileTreeProvider.refresh();
+			}
+		}),
+		vscode.workspace.onDidCreateFiles(() => {
+			fileTreeProvider.refresh();
+		}),
+		vscode.workspace.onDidDeleteFiles(() => {
+			fileTreeProvider.refresh();
+		}),
+		vscode.workspace.onDidRenameFiles(() => {
+			fileTreeProvider.refresh();
+		})
+	);
+
 	// Register the test generation command
 	let disposable = vscode.commands.registerCommand('extension.generateTests', async (fileUri?: vscode.Uri) => {
 		console.log('Command triggered with URI:', {
@@ -78,52 +166,6 @@ export function activate(context: vscode.ExtensionContext) {
 	});
 
 	context.subscriptions.push(disposable);
-
-	// Register TreeDataProvider
-	const fileTreeProvider = new FileTreeProvider();
-	const treeView = vscode.window.createTreeView('fileExplorerWithMethods', {
-		treeDataProvider: fileTreeProvider,
-		showCollapseAll: true
-	});
-	context.subscriptions.push(treeView);
-
-	// Register configuration command
-	let disposableConfig = vscode.commands.registerCommand('extension.openTestConfig', () => {
-		const { ConfigurationView } = require('./ConfigurationView');
-		ConfigurationView.createOrShow(context.extensionUri);
-	});
-	context.subscriptions.push(disposableConfig);
-
-	// Register refresh command
-	let disposableRefresh = vscode.commands.registerCommand('extension.refreshCoverage', () => {
-		outputChannel.appendLine('🔄 Refreshing coverage data...');
-		fileTreeProvider.refresh();
-		outputChannel.appendLine('✅ Coverage data refreshed');
-	});
-	context.subscriptions.push(disposableRefresh);
-
-	// Auto refresh tree view when configuration changes
-	context.subscriptions.push(
-		vscode.workspace.onDidChangeConfiguration(() => {
-			fileTreeProvider.refresh();
-		})
-	);
-
-	// Auto refresh when files change
-	context.subscriptions.push(
-		vscode.workspace.onDidSaveTextDocument(() => {
-			fileTreeProvider.refresh();
-		}),
-		vscode.workspace.onDidCreateFiles(() => {
-			fileTreeProvider.refresh();
-		}),
-		vscode.workspace.onDidDeleteFiles(() => {
-			fileTreeProvider.refresh();
-		}),
-		vscode.workspace.onDidRenameFiles(() => {
-			fileTreeProvider.refresh();
-		})
-	);
 }
 
 function generateTests(targetUri: vscode.Uri) {
