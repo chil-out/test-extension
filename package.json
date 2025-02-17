@@ -40,6 +40,11 @@
         "command": "extension.refreshCoverage",
         "title": "Refresh Coverage",
         "icon": "$(refresh)"
+      },
+      {
+        "command": "extension.openTestConfig",
+        "title": "COVEGEN Configuration",
+        "icon": "$(gear)"
       }
     ],
     "menus": {
@@ -72,6 +77,11 @@
           "command": "extension.refreshCoverage",
           "when": "view == fileExplorerWithMethods",
           "group": "navigation"
+        },
+        {
+          "command": "extension.openTestConfig",
+          "when": "view == fileExplorerWithMethods",
+          "group": "navigation"
         }
       ]
     },
@@ -83,6 +93,65 @@
           "type": "string",
           "default": "/Users/bin/Downloads/codes/nodejs/covegen-ai/mutahunter",
           "description": "Path to the test generation tool"
+        },
+        "testGenerator.model": {
+          "type": "string",
+          "default": "codestral/codestral-2501",
+          "description": "AI model to use for test generation",
+          "enum": [
+            "codestral/codestral-2501",
+            "codestral/codestral-7b",
+            "codestral/codestral-34b"
+          ]
+        },
+        "testGenerator.maxAttempts": {
+          "type": "number",
+          "default": 2,
+          "minimum": 1,
+          "maximum": 5,
+          "description": "Maximum number of attempts for test generation"
+        },
+        "testGenerator.coverageThreshold": {
+          "type": "number",
+          "default": 95,
+          "minimum": 0,
+          "maximum": 100,
+          "description": "Coverage threshold percentage above which test generation will be skipped"
+        },
+        "testGenerator.testCommand": {
+          "type": "string",
+          "default": "npx vitest run --coverage",
+          "description": "Command to run tests and generate coverage"
+        },
+        "testGenerator.coverageType": {
+          "type": "string",
+          "default": "cobertura",
+          "enum": ["cobertura", "lcov", "jacoco"],
+          "description": "Type of coverage report to generate"
+        },
+        "testGenerator.testFileExtension": {
+          "type": "string",
+          "default": ".test.js",
+          "enum": [".test.js", ".test.ts", ".spec.js", ".spec.ts"],
+          "description": "Extension to use for generated test files"
+        },
+        "testGenerator.coveragePath": {
+          "type": "string",
+          "default": "coverage/coverage.xml",
+          "description": "Path to the coverage report file (relative to workspace root)"
+        },
+        "testGenerator.apiBase": {
+          "type": "string",
+          "default": "",
+          "description": "Base URL for API requests (optional)"
+        },
+        "testGenerator.includeFiles": {
+          "type": "array",
+          "default": ["package.json", "vitest.config.js"],
+          "description": "Additional files to include in test generation",
+          "items": {
+            "type": "string"
+          }
         }
       }
     },

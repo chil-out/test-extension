@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import { exec } from 'child_process';
 import { TestCodeLensProvider } from './CodeLensProvider';
 import { FileTreeProvider } from './FileTreeProvider';
+import path from 'path';
 
 // Create a persistent output channel
 let outputChannel: vscode.OutputChannel;
@@ -86,6 +87,13 @@ export function activate(context: vscode.ExtensionContext) {
 	});
 	context.subscriptions.push(treeView);
 
+	// Register configuration command
+	let disposableConfig = vscode.commands.registerCommand('extension.openTestConfig', () => {
+		const { ConfigurationView } = require('./ConfigurationView');
+		ConfigurationView.createOrShow(context.extensionUri);
+	});
+	context.subscriptions.push(disposableConfig);
+
 	// Register refresh command
 	let disposableRefresh = vscode.commands.registerCommand('extension.refreshCoverage', () => {
 		outputChannel.appendLine('🔄 Refreshing coverage data...');
@@ -124,8 +132,30 @@ function generateTests(targetUri: vscode.Uri) {
 		return;
 	}
 
+	// Clear previous output and show the channel first
+	outputChannel.clear();
+	outputChannel.show(true);  // true means preserve focus
+
+	// Get configuration
 	const config = vscode.workspace.getConfiguration('testGenerator');
 	const toolPath = config.get<string>('toolPath');
+	const model = config.get<string>('model');
+	const maxAttempts = config.get<number>('maxAttempts');
+	const coverageThreshold = config.get<number>('coverageThreshold', 95);
+	const testCommand = config.get<string>('testCommand');
+	const coverageType = config.get<string>('coverageType');
+	const testFileExtension = config.get<string>('testFileExtension');
+
+	// Check coverage first
+	const coverage = FileTreeProvider.getFileCoverage(targetUri.fsPath);
+	if (coverage !== undefined && coverage >= coverageThreshold) {
+		const message = `⚠️ Test generation skipped:\n` +
+			`Current file already has ${coverage}% coverage, which is above the threshold (${coverageThreshold}%).\n` +
+			`No additional tests needed.`;
+		outputChannel.appendLine(message);
+		vscode.window.showInformationMessage(`Current file already has ${coverage}% coverage, which is above the threshold (${coverageThreshold}%). No additional tests needed.`);
+		return;
+	}
 
 	if (!toolPath) {
 		vscode.window.showErrorMessage('Test generation tool path not configured');
@@ -142,28 +172,49 @@ function generateTests(targetUri: vscode.Uri) {
 	// Get current file information
 	const sourceFilePath = targetUri.fsPath;
 	const fileNameWithoutExt = sourceFilePath.replace(/\.[^/.]+$/, '');
-	const testFilePath = `${fileNameWithoutExt}.test.js`;
+	const testFilePath = `${fileNameWithoutExt}${testFileExtension}`;
 
 	// 构建相对于工作区的路径
 	const workspacePath = workspaceFolder.uri.fsPath;
-	const coveragePath = `${workspacePath}/coverage/coverage.xml`;
-	const packageJsonPath = `${workspacePath}/package.json`;
-	const vitestConfigPath = `${workspacePath}/vitest.config.js`;
+	const coveragePath = path.join(workspacePath, config.get('coveragePath', 'coverage/coverage.xml'));
+	const includeFiles = (config.get<string[]>('includeFiles') || ['package.json', 'vitest.config.js'])
+		.map(file => path.join(workspacePath, file));
+	const apiBase = config.get<string>('apiBase');
 
-	const command = `"${toolPath}" gen` +
-		` --test-command "npx vitest run --coverage"` +
+	let command = `"${toolPath}" gen` +
+		` --test-command "${testCommand}"` +
 		` --code-coverage-report-path "${coveragePath}"` +
-		` --coverage-type cobertura` +
+		` --coverage-type ${coverageType}` +
 		` --test-file-path "${testFilePath}"` +
 		` --source-file-path "${sourceFilePath}"` +
-		` --model codestral/codestral-2501` +
-		` --max-attempts 2` +
-		` --include-files "${packageJsonPath}" "${vitestConfigPath}"`;
+		` --model ${model}` +
+		` --max-attempts ${maxAttempts}`;
 
-	// Clear previous output and show the channel
-	outputChannel.clear();
-	outputChannel.show(true);  // true means preserve focus
+	// Add API base if configured
+	if (apiBase) {
+		command += ` --api-base "${apiBase}"`;
+	}
+
+	// Add include files
+	if (includeFiles.length > 0) {
+		command += ` --include-files ${includeFiles.map(f => `"${f}"`).join(' ')}`;
+	}
+
 	outputChannel.appendLine('🚀 Starting test generation...');
+	outputChannel.appendLine('📋 Configuration:');
+	outputChannel.appendLine(`  • Model: ${model}`);
+	outputChannel.appendLine(`  • Max attempts: ${maxAttempts}`);
+	outputChannel.appendLine(`  • Coverage threshold: ${coverageThreshold}%`);
+	outputChannel.appendLine(`  • Test command: ${testCommand}`);
+	outputChannel.appendLine(`  • Coverage type: ${coverageType}`);
+	outputChannel.appendLine(`  • Coverage path: ${coveragePath}`);
+	if (apiBase) {
+		outputChannel.appendLine(`  • API base: ${apiBase}`);
+	}
+	outputChannel.appendLine(`  • Include files: ${includeFiles.join(', ')}`);
+	if (coverage !== undefined) {
+		outputChannel.appendLine(`📊 Current coverage: ${coverage}%`);
+	}
 	outputChannel.appendLine(`📂 Source file: ${sourceFilePath}`);
 	outputChannel.appendLine(`📝 Test file: ${testFilePath}`);
 	outputChannel.appendLine('\n🔄 Executing command...\n');
