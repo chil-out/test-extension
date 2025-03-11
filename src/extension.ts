@@ -7,6 +7,9 @@ import path from 'path';
 // Create a persistent output channel
 let outputChannel: vscode.OutputChannel;
 
+// Track currently running test generation processes by file path
+let activeTestGenerations: Map<string, { process: any, cancel: () => void }> = new Map();
+
 export function activate(context: vscode.ExtensionContext) {
 	// Initialize the output channel
 	outputChannel = vscode.window.createOutputChannel('Test Generator');
@@ -174,153 +177,208 @@ function generateTests(targetUri: vscode.Uri) {
 		return;
 	}
 
-	// Clear previous output and show the channel first
-	outputChannel.clear();
-	outputChannel.show(true);  // true means preserve focus
-
-	// Get configuration
-	const config = vscode.workspace.getConfiguration('testGenerator');
-	const toolPath = config.get<string>('toolPath');
-	const model = config.get<string>('model');
-	const maxAttempts = config.get<number>('maxAttempts');
-	const coverageThreshold = config.get<number>('coverageThreshold', 95);
-	const testCommand = config.get<string>('testCommand');
-	const coverageType = config.get<string>('coverageType');
-	const testFileExtension = config.get<string>('testFileExtension');
-	const customPrompt = config.get<string>('customPrompt');
-
-	// Check coverage first
-	const coverage = FileTreeProvider.getFileCoverage(targetUri.fsPath);
-	if (coverage !== undefined && coverage >= coverageThreshold) {
-		const message = `⚠️ Test generation skipped:\n` +
-			`Current file already has ${coverage}% coverage, which is above the threshold (${coverageThreshold}%).\n` +
-			`No additional tests needed.`;
-		outputChannel.appendLine(message);
-		vscode.window.showInformationMessage(`Current file already has ${coverage}% coverage, which is above the threshold (${coverageThreshold}%). No additional tests needed.`);
+	// Check if test generation is already in progress for this file
+	if (activeTestGenerations.has(targetUri.fsPath)) {
+		vscode.window.showInformationMessage('Test generation already in progress for this file');
 		return;
 	}
+	
+	try {
+		// Clear previous output and show the channel first
+		outputChannel.clear();
+		outputChannel.show(true);  // true means preserve focus
 
-	if (!toolPath) {
-		vscode.window.showErrorMessage('Test generation tool path not configured');
-		return;
-	}
+		// Get configuration
+		const config = vscode.workspace.getConfiguration('testGenerator');
+		const toolPath = config.get<string>('toolPath');
+		const model = config.get<string>('model');
+		const maxAttempts = config.get<number>('maxAttempts');
+		const coverageThreshold = config.get<number>('coverageThreshold', 95);
+		const testCommand = config.get<string>('testCommand');
+		const coverageType = config.get<string>('coverageType');
+		const testFileExtension = config.get<string>('testFileExtension');
+		const customPrompt = config.get<string>('customPrompt');
 
-	// Get workspace root directory
-	const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
-	if (!workspaceFolder) {
-		vscode.window.showErrorMessage('No workspace is open');
-		return;
-	}
+		// Check coverage first
+		const coverage = FileTreeProvider.getFileCoverage(targetUri.fsPath);
+		if (coverage !== undefined && coverage >= coverageThreshold) {
+			const message = `⚠️ Test generation skipped:\n` +
+				`Current file already has ${coverage}% coverage, which is above the threshold (${coverageThreshold}%).\n` +
+				`No additional tests needed.`;
+			outputChannel.appendLine(message);
+			vscode.window.showInformationMessage(`Current file already has ${coverage}% coverage, which is above the threshold (${coverageThreshold}%). No additional tests needed.`);
+			return;
+		}
 
-	// Get current file information
-	const sourceFilePath = targetUri.fsPath;
-	const fileNameWithoutExt = sourceFilePath.replace(/\.[^/.]+$/, '');
-	const testFilePath = `${fileNameWithoutExt}${testFileExtension}`;
+		if (!toolPath) {
+			vscode.window.showErrorMessage('Test generation tool path not configured');
+			return;
+		}
 
-	// 构建相对于工作区的路径
-	const workspacePath = workspaceFolder.uri.fsPath;
-	const coveragePath = path.join(workspacePath, config.get('coveragePath', 'coverage/coverage.xml'));
-	const includeFiles = (config.get<string[]>('includeFiles') || ['package.json', 'vitest.config.js'])
-		.map(file => path.join(workspacePath, file));
-	const apiBase = config.get<string>('apiBase');
+		// Get workspace root directory
+		const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
+		if (!workspaceFolder) {
+			vscode.window.showErrorMessage('No workspace is open');
+			return;
+		}
 
-	let command = `"${toolPath}" gen` +
-		` --test-command "${testCommand}"` +
-		` --code-coverage-report-path "${coveragePath}"` +
-		` --coverage-type ${coverageType}` +
-		` --test-file-path "${testFilePath}"` +
-		` --source-file-path "${sourceFilePath}"` +
-		` --model ${model}` +
-		` --max-attempts ${maxAttempts}`;
+		// Get current file information
+		const sourceFilePath = targetUri.fsPath;
+		const fileNameWithoutExt = sourceFilePath.replace(/\.[^/.]+$/, '');
+		const testFilePath = `${fileNameWithoutExt}${testFileExtension}`;
 
-	// Add API base if configured
-	if (apiBase) {
-		command += ` --api-base "${apiBase}"`;
-	}
+		// 构建相对于工作区的路径
+		const workspacePath = workspaceFolder.uri.fsPath;
+		const coveragePath = path.join(workspacePath, config.get('coveragePath', 'coverage/coverage.xml'));
+		const includeFiles = (config.get<string[]>('includeFiles') || ['package.json', 'vitest.config.js'])
+			.map(file => path.join(workspacePath, file));
+		const apiBase = config.get<string>('apiBase');
 
-	// Add include files
-	if (includeFiles.length > 0) {
-		command += ` --include-files ${includeFiles.map(f => `"${f}"`).join(' ')}`;
-	}
+		let command = `"${toolPath}" gen` +
+			` --test-command "${testCommand}"` +
+			` --code-coverage-report-path "${coveragePath}"` +
+			` --coverage-type ${coverageType}` +
+			` --test-file-path "${testFilePath}"` +
+			` --source-file-path "${sourceFilePath}"` +
+			` --model ${model}` +
+			` --max-attempts ${maxAttempts}`;
 
-	// Add custom prompt if configured
-	if (customPrompt) {
-		command += ` --custom-prompt "${customPrompt}"`;
-	}
+		// Add API base if configured
+		if (apiBase) {
+			command += ` --api-base "${apiBase}"`;
+		}
 
-	outputChannel.appendLine('🚀 Starting test generation...');
-	outputChannel.appendLine('📋 Configuration:');
-	outputChannel.appendLine(`  • Model: ${model}`);
-	outputChannel.appendLine(`  • Max attempts: ${maxAttempts}`);
-	outputChannel.appendLine(`  • Coverage threshold: ${coverageThreshold}%`);
-	outputChannel.appendLine(`  • Test command: ${testCommand}`);
-	outputChannel.appendLine(`  • Coverage type: ${coverageType}`);
-	outputChannel.appendLine(`  • Coverage path: ${coveragePath}`);
-	if (apiBase) {
-		outputChannel.appendLine(`  • API base: ${apiBase}`);
-	}
-	if (customPrompt) {
-		outputChannel.appendLine(`  • Custom prompt: ${customPrompt}`);
-	}
-	outputChannel.appendLine(`  • Include files: ${includeFiles.join(', ')}`);
-	if (coverage !== undefined) {
-		outputChannel.appendLine(`📊 Current coverage: ${coverage}%`);
-	}
-	outputChannel.appendLine(`📂 Source file: ${sourceFilePath}`);
-	outputChannel.appendLine(`📝 Test file: ${testFilePath}`);
-	outputChannel.appendLine('\n🔄 Executing command...\n');
+		// Add include files
+		if (includeFiles.length > 0) {
+			command += ` --include-files ${includeFiles.map(f => `"${f}"`).join(' ')}`;
+		}
 
-	vscode.window.withProgress({
-		location: vscode.ProgressLocation.Notification,
-		title: "Generating tests...",
-		cancellable: false
-	}, async (progress) => {
-		progress.report({ increment: 0, message: "Initializing test generation..." });
+		// Add custom prompt if configured
+		if (customPrompt) {
+			command += ` --custom-prompt "${customPrompt}"`;
+		}
 
-		return new Promise<void>((resolve, reject) => {
-			exec(command, { cwd: workspacePath }, async (error, stdout, stderr) => {
-				if (error) {
-					outputChannel.appendLine('\n❌ Error executing command:');
-					outputChannel.appendLine(error.message);
+		outputChannel.appendLine('🚀 Starting test generation...');
+		outputChannel.appendLine('📋 Configuration:');
+		outputChannel.appendLine(`  • Model: ${model}`);
+		outputChannel.appendLine(`  • Max attempts: ${maxAttempts}`);
+		outputChannel.appendLine(`  • Coverage threshold: ${coverageThreshold}%`);
+		outputChannel.appendLine(`  • Test command: ${testCommand}`);
+		outputChannel.appendLine(`  • Coverage type: ${coverageType}`);
+		outputChannel.appendLine(`  • Coverage path: ${coveragePath}`);
+		if (apiBase) {
+			outputChannel.appendLine(`  • API base: ${apiBase}`);
+		}
+		if (customPrompt) {
+			outputChannel.appendLine(`  • Custom prompt: ${customPrompt}`);
+		}
+		outputChannel.appendLine(`  • Include files: ${includeFiles.join(', ')}`);
+		if (coverage !== undefined) {
+			outputChannel.appendLine(`📊 Current coverage: ${coverage}%`);
+		}
+		outputChannel.appendLine(`📂 Source file: ${sourceFilePath}`);
+		outputChannel.appendLine(`📝 Test file: ${testFilePath}`);
+		outputChannel.appendLine('\n🔄 Executing command...\n');
+
+		vscode.window.withProgress({
+			location: vscode.ProgressLocation.Notification,
+			title: "Generating tests...",
+			cancellable: true
+		}, async (progress, token) => {
+			progress.report({ increment: 0, message: "Initializing test generation..." });
+
+			return new Promise<void>((resolve, reject) => {
+				// Execute the command
+				const childProcess = exec(command, { 
+					cwd: workspacePath
+				}, async (error: Error | null, stdout: string, stderr: string) => {
+					// Remove from active generations when done
+					activeTestGenerations.delete(targetUri.fsPath);
+					
+					if (error) {
+						outputChannel.appendLine('\n❌ Error executing command:');
+						outputChannel.appendLine(error.message);
+						if (stderr) {
+							outputChannel.appendLine('\nError output:');
+							outputChannel.appendLine(stderr);
+						}
+						reject(error);
+						return;
+					}
+
 					if (stderr) {
-						outputChannel.appendLine('\nError output:');
+						outputChannel.appendLine('\n⚠️ Warning output:');
 						outputChannel.appendLine(stderr);
 					}
-					reject(error);
-					return;
-				}
 
-				if (stderr) {
-					outputChannel.appendLine('\n⚠️ Warning output:');
-					outputChannel.appendLine(stderr);
-				}
+					outputChannel.appendLine('\n📋 Command output:');
+					outputChannel.appendLine(stdout);
 
-				outputChannel.appendLine('\n📋 Command output:');
-				outputChannel.appendLine(stdout);
+					progress.report({ increment: 50, message: "Test generation complete, opening file..." });
 
-				progress.report({ increment: 50, message: "Test generation complete, opening file..." });
+					try {
+						// Open the generated test file
+						const testFileUri = vscode.Uri.file(testFilePath);
+						const doc = await vscode.workspace.openTextDocument(testFileUri);
+						await vscode.window.showTextDocument(doc);
 
-				try {
-					// Open the generated test file
-					const testFileUri = vscode.Uri.file(testFilePath);
-					const doc = await vscode.workspace.openTextDocument(testFileUri);
-					await vscode.window.showTextDocument(doc);
+						outputChannel.appendLine('\n✅ Test generation completed successfully!');
+						outputChannel.appendLine(`📄 Generated test file: ${testFilePath}`);
 
-					outputChannel.appendLine('\n✅ Test generation completed successfully!');
-					outputChannel.appendLine(`📄 Generated test file: ${testFilePath}`);
-
-					progress.report({ increment: 100, message: "Done!" });
-					resolve();
-				} catch (err: any) {
-					outputChannel.appendLine('\n❌ Error opening generated test file:');
-					outputChannel.appendLine(err.message);
-					reject(err);
-				}
+						progress.report({ increment: 100, message: "Done!" });
+						resolve();
+					} catch (err: any) {
+						outputChannel.appendLine('\n❌ Error opening generated test file:');
+						outputChannel.appendLine(err.message);
+						reject(err);
+					}
+				});
+				
+				// Create cancel function
+				const cancelFunction = () => {
+					if (childProcess && childProcess.pid) {
+						// Kill the process
+						try {
+							// On Windows
+							if (process.platform === 'win32') {
+								exec(`taskkill /pid ${childProcess.pid} /T /F`);
+							} else {
+								// On Unix-like systems
+								childProcess.kill('SIGTERM');
+							}
+							
+							outputChannel.appendLine('\n❌ Test generation cancelled by user');
+						} catch (err) {
+							outputChannel.appendLine('\n⚠️ Failed to terminate process: ' + (err as Error).message);
+						} finally {
+							// Always remove from active generations
+							activeTestGenerations.delete(targetUri.fsPath);
+						}
+					}
+				};
+				
+				// Store process info in active generations map
+				activeTestGenerations.set(targetUri.fsPath, {
+					process: childProcess,
+					cancel: cancelFunction
+				});
+				
+				// Handle cancellation token
+				token.onCancellationRequested(() => {
+					cancelFunction();
+					resolve(); // Resolve the promise to close the progress indicator
+				});
+			}).catch(err => {
+				vscode.window.showErrorMessage(`Test generation failed: ${err.message}`);
+				// Ensure we remove from active generations map even on error
+				activeTestGenerations.delete(targetUri.fsPath);
 			});
-		}).catch(err => {
-			vscode.window.showErrorMessage(`Test generation failed: ${err.message}`);
 		});
-	});
+	} catch (error: any) {
+		console.error('Error in generateTests:', error);
+		vscode.window.showErrorMessage(`Error in test generation: ${error?.message || 'Unknown error'}`);
+		activeTestGenerations.delete(targetUri.fsPath);
+	}
 }
 
 export function deactivate() { }
