@@ -152,6 +152,11 @@
           "items": {
             "type": "string"
           }
+        },
+        "testGenerator.customPrompt": {
+          "type": "string",
+          "default": "",
+          "description": "Custom prompt to pass to the test generation model"
         }
       }
     },

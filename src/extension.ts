@@ -187,6 +187,7 @@ function generateTests(targetUri: vscode.Uri) {
 	const testCommand = config.get<string>('testCommand');
 	const coverageType = config.get<string>('coverageType');
 	const testFileExtension = config.get<string>('testFileExtension');
+	const customPrompt = config.get<string>('customPrompt');
 
 	// Check coverage first
 	const coverage = FileTreeProvider.getFileCoverage(targetUri.fsPath);
@@ -242,6 +243,11 @@ function generateTests(targetUri: vscode.Uri) {
 		command += ` --include-files ${includeFiles.map(f => `"${f}"`).join(' ')}`;
 	}
 
+	// Add custom prompt if configured
+	if (customPrompt) {
+		command += ` --custom-prompt "${customPrompt}"`;
+	}
+
 	outputChannel.appendLine('🚀 Starting test generation...');
 	outputChannel.appendLine('📋 Configuration:');
 	outputChannel.appendLine(`  • Model: ${model}`);
@@ -252,6 +258,9 @@ function generateTests(targetUri: vscode.Uri) {
 	outputChannel.appendLine(`  • Coverage path: ${coveragePath}`);
 	if (apiBase) {
 		outputChannel.appendLine(`  • API base: ${apiBase}`);
+	}
+	if (customPrompt) {
+		outputChannel.appendLine(`  • Custom prompt: ${customPrompt}`);
 	}
 	outputChannel.appendLine(`  • Include files: ${includeFiles.join(', ')}`);
 	if (coverage !== undefined) {

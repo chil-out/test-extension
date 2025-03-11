@@ -239,6 +239,12 @@ export class ConfigurationView {
                     <textarea id="includeFiles" name="includeFiles" rows="4" style="width: 100%; padding: 8px; background: var(--vscode-input-background); color: var(--vscode-input-foreground); border: 1px solid var(--vscode-input-border); border-radius: 4px;">${includeFiles.join('\n')}</textarea>
                 </div>
 
+                <div class="form-group">
+                    <label for="customPrompt">Custom Prompt</label>
+                    <div class="description">Custom prompt to pass to the test generation model</div>
+                    <textarea id="customPrompt" name="customPrompt" rows="4" style="width: 100%; padding: 8px; background: var(--vscode-input-background); color: var(--vscode-input-foreground); border: 1px solid var(--vscode-input-border); border-radius: 4px;">${config.get('customPrompt') || ''}</textarea>
+                </div>
+
                 <button type="submit" id="submitButton">Save Configuration</button>
             </form>
 
