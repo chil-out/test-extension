@@ -3,6 +3,8 @@ import { exec, spawn } from 'child_process';
 import { TestCodeLensProvider } from './CodeLensProvider';
 import { FileTreeProvider } from './FileTreeProvider';
 import path from 'path';
+import { ConfigManager } from './ConfigManager';
+import { ProjectConfigCommand } from './ProjectConfigCommand';
 
 // Create a persistent output channel
 let outputChannel: vscode.OutputChannel;
@@ -34,11 +36,13 @@ export function activate(context: vscode.ExtensionContext) {
 	context.subscriptions.push(treeView);
 
 	// Watch for coverage file changes
-	const config = vscode.workspace.getConfiguration('testGenerator');
-	const coveragePath = config.get<string>('coveragePath', 'coverage/coverage.xml');
-	
+	const configManager = ConfigManager.getInstance();
 	const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
+	
 	if (workspaceFolder) {
+		const config = configManager.getConfig(workspaceFolder.uri.fsPath);
+		const coveragePath = config.coveragePath;
+		
 		const coverageWatcher = vscode.workspace.createFileSystemWatcher(
 			new vscode.RelativePattern(workspaceFolder, `**/${coveragePath}`),
 			false, // Don't ignore create
@@ -66,6 +70,12 @@ export function activate(context: vscode.ExtensionContext) {
 		ConfigurationView.createOrShow(context.extensionUri);
 	});
 	context.subscriptions.push(disposableConfig);
+	
+	// Register project configuration command
+	let disposableProjectConfig = vscode.commands.registerCommand('extension.createProjectConfig', () => {
+		ProjectConfigCommand.createOrEditProjectConfig();
+	});
+	context.subscriptions.push(disposableProjectConfig);
 
 	// Register refresh command
 	let disposableRefresh = vscode.commands.registerCommand('extension.refreshCoverage', () => {
@@ -80,8 +90,10 @@ export function activate(context: vscode.ExtensionContext) {
 		vscode.workspace.onDidChangeConfiguration(e => {
 			if (e.affectsConfiguration('testGenerator.coveragePath')) {
 				// Update coverage file watcher if coverage path changes
-				const newCoveragePath = vscode.workspace.getConfiguration('testGenerator').get<string>('coveragePath', 'coverage/coverage.xml');
 				if (workspaceFolder) {
+					const config = configManager.getConfig(workspaceFolder.uri.fsPath);
+					const newCoveragePath = config.coveragePath;
+					
 					const newWatcher = vscode.workspace.createFileSystemWatcher(
 						new vscode.RelativePattern(workspaceFolder, `**/${newCoveragePath}`),
 						false, false, false
@@ -89,6 +101,12 @@ export function activate(context: vscode.ExtensionContext) {
 					context.subscriptions.push(newWatcher);
 				}
 			}
+			
+			// Clear config cache when VS Code settings change
+			if (e.affectsConfiguration('testGenerator')) {
+				configManager.clearCache();
+			}
+			
 			fileTreeProvider.refresh();
 		})
 	);
@@ -100,6 +118,14 @@ export function activate(context: vscode.ExtensionContext) {
 			if (document.fileName.includes('.test.') || document.fileName.includes('.spec.')) {
 				outputChannel.appendLine('🔄 Test file saved, refreshing coverage data...');
 				fileTreeProvider.refresh();
+			}
+			
+			// Check if it's the project config file
+			const fileName = path.basename(document.fileName);
+			if (fileName === 'covegen.json') {
+				// Clear config cache
+				configManager.clearCache();
+				outputChannel.appendLine('🔄 Project configuration changed, refreshing...');
 			}
 		}),
 		vscode.workspace.onDidCreateFiles(() => {
@@ -188,64 +214,65 @@ function generateTests(targetUri: vscode.Uri) {
 		outputChannel.clear();
 		outputChannel.show(true);  // true means preserve focus
 
-		// Get configuration
-		const config = vscode.workspace.getConfiguration('testGenerator');
-		const toolPath = config.get<string>('toolPath');
-		const model = config.get<string>('model');
-		const maxAttempts = config.get<number>('maxAttempts');
-		const coverageThreshold = config.get<number>('coverageThreshold', 95);
-		const testCommand = config.get<string>('testCommand');
-		const coverageType = config.get<string>('coverageType');
-		const testFileExtension = config.get<string>('testFileExtension');
-		const customPrompt = config.get<string>('customPrompt');
-
-		// Check coverage first
-		const coverage = FileTreeProvider.getFileCoverage(targetUri.fsPath);
-		if (coverage !== undefined && coverage >= coverageThreshold) {
-			const message = `⚠️ Test generation skipped:\n` +
-				`Current file already has ${coverage}% coverage, which is above the threshold (${coverageThreshold}%).\n` +
-				`No additional tests needed.`;
-			outputChannel.appendLine(message);
-			vscode.window.showInformationMessage(`Current file already has ${coverage}% coverage, which is above the threshold (${coverageThreshold}%). No additional tests needed.`);
-			return;
-		}
-
-		if (!toolPath) {
-			vscode.window.showErrorMessage('Test generation tool path not configured');
-			return;
-		}
-
-		// Get workspace root directory
+		// Get workspace info
 		const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
 		if (!workspaceFolder) {
 			vscode.window.showErrorMessage('No workspace is open');
+			return;
+		}
+		const workspacePath = workspaceFolder.uri.fsPath;
+
+		// Get configuration using the ConfigManager
+		const configManager = ConfigManager.getInstance();
+		const config = configManager.getConfig(workspacePath);
+
+		// Check if project configuration is missing
+		if (!config.toolPath) {
+			// Ask user if they want to create a project configuration
+			vscode.window.showWarningMessage(
+				'Test generation tool path not configured. Would you like to create a project configuration?',
+				'Create Project Config', 'Cancel'
+			).then(selection => {
+				if (selection === 'Create Project Config') {
+					ProjectConfigCommand.createOrEditProjectConfig();
+				}
+			});
+			return;
+		}
+
+		// Check coverage first
+		const coverage = FileTreeProvider.getFileCoverage(targetUri.fsPath);
+		if (coverage !== undefined && coverage >= config.coverageThreshold) {
+			const message = `⚠️ Test generation skipped:\n` +
+				`Current file already has ${coverage}% coverage, which is above the threshold (${config.coverageThreshold}%).\n` +
+				`No additional tests needed.`;
+			outputChannel.appendLine(message);
+			vscode.window.showInformationMessage(`Current file already has ${coverage}% coverage, which is above the threshold (${config.coverageThreshold}%). No additional tests needed.`);
 			return;
 		}
 
 		// Get current file information
 		const sourceFilePath = targetUri.fsPath;
 		const fileNameWithoutExt = sourceFilePath.replace(/\.[^/.]+$/, '');
-		const testFilePath = `${fileNameWithoutExt}${testFileExtension}`;
+		const testFilePath = `${fileNameWithoutExt}${config.testFileExtension}`;
 
 		// 构建相对于工作区的路径
-		const workspacePath = workspaceFolder.uri.fsPath;
-		const coveragePath = path.join(workspacePath, config.get('coveragePath', 'coverage/coverage.xml'));
-		const includeFiles = (config.get<string[]>('includeFiles') || ['package.json', 'vitest.config.js'])
+		const coveragePath = path.join(workspacePath, config.coveragePath);
+		const includeFiles = (config.includeFiles || ['package.json', 'vitest.config.js'])
 			.map(file => path.join(workspacePath, file));
-		const apiBase = config.get<string>('apiBase');
 
-		let command = `"${toolPath}" gen` +
-			` --test-command "${testCommand}"` +
+		let command = `"${config.toolPath}" gen` +
+			` --test-command "${config.testCommand}"` +
 			` --code-coverage-report-path "${coveragePath}"` +
-			` --coverage-type ${coverageType}` +
+			` --coverage-type ${config.coverageType}` +
 			` --test-file-path "${testFilePath}"` +
 			` --source-file-path "${sourceFilePath}"` +
-			` --model ${model}` +
-			` --max-attempts ${maxAttempts}`;
+			` --model ${config.model}` +
+			` --max-attempts ${config.maxAttempts}`;
 
 		// Add API base if configured
-		if (apiBase) {
-			command += ` --api-base "${apiBase}"`;
+		if (config.apiBase) {
+			command += ` --api-base "${config.apiBase}"`;
 		}
 
 		// Add include files
@@ -254,23 +281,25 @@ function generateTests(targetUri: vscode.Uri) {
 		}
 
 		// Add custom prompt if configured
-		if (customPrompt) {
-			command += ` --custom-prompt "${customPrompt}"`;
+		if (config.customPrompt) {
+			command += ` --custom-prompt "${config.customPrompt}"`;
 		}
 
+		// 输出配置信息
 		outputChannel.appendLine('🚀 Starting test generation...');
 		outputChannel.appendLine('📋 Configuration:');
-		outputChannel.appendLine(`  • Model: ${model}`);
-		outputChannel.appendLine(`  • Max attempts: ${maxAttempts}`);
-		outputChannel.appendLine(`  • Coverage threshold: ${coverageThreshold}%`);
-		outputChannel.appendLine(`  • Test command: ${testCommand}`);
-		outputChannel.appendLine(`  • Coverage type: ${coverageType}`);
+		outputChannel.appendLine(`  • Using project configuration: ${configManager.hasProjectConfig(workspacePath) ? 'Yes' : 'No'}`);
+		outputChannel.appendLine(`  • Model: ${config.model}`);
+		outputChannel.appendLine(`  • Max attempts: ${config.maxAttempts}`);
+		outputChannel.appendLine(`  • Coverage threshold: ${config.coverageThreshold}%`);
+		outputChannel.appendLine(`  • Test command: ${config.testCommand}`);
+		outputChannel.appendLine(`  • Coverage type: ${config.coverageType}`);
 		outputChannel.appendLine(`  • Coverage path: ${coveragePath}`);
-		if (apiBase) {
-			outputChannel.appendLine(`  • API base: ${apiBase}`);
+		if (config.apiBase) {
+			outputChannel.appendLine(`  • API base: ${config.apiBase}`);
 		}
-		if (customPrompt) {
-			outputChannel.appendLine(`  • Custom prompt: ${customPrompt}`);
+		if (config.customPrompt) {
+			outputChannel.appendLine(`  • Custom prompt: ${config.customPrompt}`);
 		}
 		outputChannel.appendLine(`  • Include files: ${includeFiles.join(', ')}`);
 		if (coverage !== undefined) {

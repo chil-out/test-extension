@@ -33,18 +33,18 @@
     "commands": [
       {
         "command": "extension.generateTests",
-        "title": "Generate Unit Test",
+        "title": "Generate Tests",
         "icon": "$(run)"
       },
       {
-        "command": "extension.refreshCoverage",
-        "title": "Refresh Coverage",
-        "icon": "$(refresh)"
+        "command": "extension.openTestConfig",
+        "title": "Open Test Generator Configuration",
+        "icon": "$(gear)"
       },
       {
-        "command": "extension.openTestConfig",
-        "title": "COVEGEN Configuration",
-        "icon": "$(gear)"
+        "command": "extension.refreshCoverage",
+        "title": "Refresh Coverage Data",
+        "icon": "$(refresh)"
       }
     ],
     "menus": {
