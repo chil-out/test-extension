@@ -15,6 +15,8 @@ export class ConfigurationView {
 
         // If we already have a panel, show it
         if (ConfigurationView.currentPanel) {
+            // 当再次打开面板时，强制刷新配置
+            ConfigurationView.currentPanel._refreshConfiguration();
             ConfigurationView.currentPanel.reveal(column);
             return;
         }
@@ -54,7 +56,8 @@ export class ConfigurationView {
         this._panel.onDidChangeViewState(
             e => {
                 if (this._panel.visible) {
-                    this._update();
+                    // 当面板变为可见时，刷新配置
+                    this._refreshConfiguration();
                 }
             },
             null,
@@ -88,6 +91,9 @@ export class ConfigurationView {
                 throw new Error('No workspace folder is open');
             }
 
+            // 在保存前清除缓存
+            this._configManager.clearCache();
+
             if (this._isProjectConfig) {
                 // Save to project config file
                 await this._configManager.saveProjectConfig(config, workspaceFolder.uri.fsPath);
@@ -114,6 +120,9 @@ export class ConfigurationView {
 
                 vscode.window.showInformationMessage('VS Code configuration saved successfully!');
             }
+            
+            // 在保存后刷新视图
+            this._refreshConfiguration();
         } catch (error: any) {
             // Show error message in the webview
             this._panel.webview.postMessage({ 
@@ -504,5 +513,19 @@ export class ConfigurationView {
                 x.dispose();
             }
         }
+    }
+
+    private async _refreshConfiguration() {
+        // 清除缓存
+        this._configManager.clearCache();
+        
+        // 检查是否有项目配置
+        const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
+        if (workspaceFolder) {
+            this._isProjectConfig = this._configManager.hasProjectConfig(workspaceFolder.uri.fsPath);
+        }
+        
+        // 更新视图
+        this._update();
     }
 } 
