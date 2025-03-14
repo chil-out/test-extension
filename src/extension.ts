@@ -290,6 +290,7 @@ function generateTests(targetUri: vscode.Uri) {
 			return new Promise<void>((resolve, reject) => {
 				// Execute the command using spawn with shell:true and the full command
 				outputChannel.appendLine(`Executing command: ${command}`);
+				outputChannel.show(true); // Show and auto-scroll at the start
 				
 				const childProcess = spawn(command, [], { 
 					cwd: workspacePath,
@@ -351,7 +352,10 @@ function generateTests(targetUri: vscode.Uri) {
 				childProcess.stdout?.on('data', (data) => {
 					const output = data.toString();
 					stdoutData += output;
+					
+					// Append output and reveal the latest content (auto-scroll)
 					outputChannel.append(output);
+					outputChannel.show(true); // true means don't take focus
 					
 					// Update progress based on output patterns
 					for (const { pattern, value } of progressPatterns) {
@@ -371,9 +375,6 @@ function generateTests(targetUri: vscode.Uri) {
 					const filledChars = Math.round((progressValue / 100) * progressBarWidth);
 					const progressBar = '[' + '█'.repeat(filledChars) + '░'.repeat(progressBarWidth - filledChars) + ']';
 					
-					// Extract the first line of output for the message
-					// const firstLine = output.split('\n')[0].substring(0, 40);
-					
 					// Calculate increment based on difference from last reported progress
 					const increment = progressValue - lastReportedProgress;
 					lastReportedProgress = progressValue;
@@ -388,11 +389,15 @@ function generateTests(targetUri: vscode.Uri) {
 				childProcess.stderr?.on('data', (data) => {
 					const output = data.toString();
 					stderrData += output;
+					
+					// Append error output and reveal the latest content (auto-scroll)
 					outputChannel.append(`⚠️ ${output}`);
+					outputChannel.show(true); // true means don't take focus
 				});
 
 				childProcess.on('error', (error) => {
 					outputChannel.appendLine(`\n❌ Error executing command: ${error.message}`);
+					outputChannel.show(true); // Show and auto-scroll on error
 					activeTestGenerations.delete(targetUri.fsPath);
 					reject(error);
 				});
@@ -405,12 +410,14 @@ function generateTests(targetUri: vscode.Uri) {
 						if (stderrData) {
 							outputChannel.appendLine('\nError output:');
 							outputChannel.appendLine(stderrData);
+							outputChannel.show(true); // Show and auto-scroll on error output
 						}
 						reject(new Error(`Process exited.`));
 						return;
 					}
 
 					outputChannel.appendLine('\n📋 Command completed successfully');
+					outputChannel.show(true); // Show and auto-scroll on completion
 
 					// Update progress to show completion of command execution
 					progress.report({ 
@@ -426,16 +433,22 @@ function generateTests(targetUri: vscode.Uri) {
 
 						outputChannel.appendLine('\n✅ Test generation completed successfully!');
 						outputChannel.appendLine(`📄 Generated test file: ${testFilePath}`);
+						outputChannel.show(true); // Show and auto-scroll on final success
 						
 						resolve();
 					} catch (err: any) {
 						outputChannel.appendLine('\n❌ Error opening generated test file:');
 						outputChannel.appendLine(err.message);
+						outputChannel.show(true); // Show and auto-scroll on file open error
+						
 						reject(err);
 					}
 				});
 			}).catch(err => {
 				vscode.window.showErrorMessage(`Test generation failed: ${err.message}`);
+				outputChannel.appendLine(`\n❌ Test generation failed: ${err.message}`);
+				outputChannel.show(true); // Show and auto-scroll on process failure
+				
 				// Ensure we remove from active generations map even on error
 				activeTestGenerations.delete(targetUri.fsPath);
 			});
