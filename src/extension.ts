@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { exec } from 'child_process';
+import { exec, spawn } from 'child_process';
 import { TestCodeLensProvider } from './CodeLensProvider';
 import { FileTreeProvider } from './FileTreeProvider';
 import path from 'path';
@@ -288,53 +288,15 @@ function generateTests(targetUri: vscode.Uri) {
 			progress.report({ increment: 0, message: "Initializing test generation..." });
 
 			return new Promise<void>((resolve, reject) => {
-				// Execute the command
-				const childProcess = exec(command, { 
-					cwd: workspacePath
-				}, async (error: Error | null, stdout: string, stderr: string) => {
-					// Remove from active generations when done
-					activeTestGenerations.delete(targetUri.fsPath);
-					
-					if (error) {
-						outputChannel.appendLine('\n❌ Error executing command:');
-						outputChannel.appendLine(error.message);
-						if (stderr) {
-							outputChannel.appendLine('\nError output:');
-							outputChannel.appendLine(stderr);
-						}
-						reject(error);
-						return;
-					}
-
-					if (stderr) {
-						outputChannel.appendLine('\n⚠️ Warning output:');
-						outputChannel.appendLine(stderr);
-					}
-
-					outputChannel.appendLine('\n📋 Command output:');
-					outputChannel.appendLine(stdout);
-
-					progress.report({ increment: 50, message: "Test generation complete, opening file..." });
-
-					try {
-						// Open the generated test file
-						const testFileUri = vscode.Uri.file(testFilePath);
-						const doc = await vscode.workspace.openTextDocument(testFileUri);
-						await vscode.window.showTextDocument(doc);
-
-						outputChannel.appendLine('\n✅ Test generation completed successfully!');
-						outputChannel.appendLine(`📄 Generated test file: ${testFilePath}`);
-
-						progress.report({ increment: 100, message: "Done!" });
-						resolve();
-					} catch (err: any) {
-						outputChannel.appendLine('\n❌ Error opening generated test file:');
-						outputChannel.appendLine(err.message);
-						reject(err);
-					}
+				// Execute the command using spawn with shell:true and the full command
+				outputChannel.appendLine(`Executing command: ${command}`);
+				
+				const childProcess = spawn(command, [], { 
+					cwd: workspacePath,
+					shell: true
 				});
 				
-				// Create cancel function
+				// Store process info in active generations map
 				const cancelFunction = () => {
 					if (childProcess && childProcess.pid) {
 						// Kill the process
@@ -367,6 +329,110 @@ function generateTests(targetUri: vscode.Uri) {
 				token.onCancellationRequested(() => {
 					cancelFunction();
 					resolve(); // Resolve the promise to close the progress indicator
+				});
+
+				// Capture and display output in real-time
+				let stdoutData = '';
+				let stderrData = '';
+				
+				// Progress tracking variables
+				let progressValue = 0;
+				let lastReportedProgress = 0;
+				const progressPatterns = [
+					{ pattern: /Initializing test generation/i, value: 5 },
+					{ pattern: /Analyzing source code/i, value: 15 },
+					{ pattern: /Generating test cases/i, value: 30 },
+					{ pattern: /Running initial tests/i, value: 50 },
+					{ pattern: /Improving test coverage/i, value: 65 },
+					{ pattern: /Validating test coverage/i, value: 80 },
+					{ pattern: /Writing final tests/i, value: 90 }
+				];
+
+				childProcess.stdout?.on('data', (data) => {
+					const output = data.toString();
+					stdoutData += output;
+					outputChannel.append(output);
+					
+					// Update progress based on output patterns
+					for (const { pattern, value } of progressPatterns) {
+						if (pattern.test(output) && value > progressValue) {
+							progressValue = value;
+							break;
+						}
+					}
+
+					// Increment progress slightly on each output to show activity
+					if (progressValue < 90) {
+						progressValue = Math.min(90, progressValue + 0.2);
+					}
+					
+					// Create a visual progress bar
+					const progressBarWidth = 20;
+					const filledChars = Math.round((progressValue / 100) * progressBarWidth);
+					const progressBar = '[' + '█'.repeat(filledChars) + '░'.repeat(progressBarWidth - filledChars) + ']';
+					
+					// Extract the first line of output for the message
+					// const firstLine = output.split('\n')[0].substring(0, 40);
+					
+					// Calculate increment based on difference from last reported progress
+					const increment = progressValue - lastReportedProgress;
+					lastReportedProgress = progressValue;
+					
+					// Update progress with both a visual bar and the latest output
+					progress.report({ 
+						increment: increment > 0 ? increment : 0,
+						message: `${progressBar} (${Math.round(progressValue)}%) ...` 
+					});
+				});
+
+				childProcess.stderr?.on('data', (data) => {
+					const output = data.toString();
+					stderrData += output;
+					outputChannel.append(`⚠️ ${output}`);
+				});
+
+				childProcess.on('error', (error) => {
+					outputChannel.appendLine(`\n❌ Error executing command: ${error.message}`);
+					activeTestGenerations.delete(targetUri.fsPath);
+					reject(error);
+				});
+
+				childProcess.on('close', async (code) => {
+					// Remove from active generations when done
+					activeTestGenerations.delete(targetUri.fsPath);
+					
+					if (code !== 0) {
+						if (stderrData) {
+							outputChannel.appendLine('\nError output:');
+							outputChannel.appendLine(stderrData);
+						}
+						reject(new Error(`Process exited.`));
+						return;
+					}
+
+					outputChannel.appendLine('\n📋 Command completed successfully');
+
+					// Update progress to show completion of command execution
+					progress.report({ 
+						increment: 100 - lastReportedProgress,
+						message: "[██████████████████████] (100%) Test generation complete!" 
+					});
+
+					try {
+						// Open the generated test file
+						const testFileUri = vscode.Uri.file(testFilePath);
+						const doc = await vscode.workspace.openTextDocument(testFileUri);
+						await vscode.window.showTextDocument(doc);
+
+						outputChannel.appendLine('\n✅ Test generation completed successfully!');
+						outputChannel.appendLine(`📄 Generated test file: ${testFilePath}`);
+						
+						resolve();
+					} catch (err: any) {
+						outputChannel.appendLine('\n❌ Error opening generated test file:');
+						outputChannel.appendLine(err.message);
+						reject(err);
+					}
 				});
 			}).catch(err => {
 				vscode.window.showErrorMessage(`Test generation failed: ${err.message}`);
