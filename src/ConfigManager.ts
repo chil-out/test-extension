@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
+import * as os from 'os';
 
 export interface CovegenConfig {
     toolPath: string;
@@ -43,6 +44,43 @@ export class ConfigManager {
     }
     
     /**
+     * 获取当前用户名
+     */
+    public getCurrentUsername(): string {
+        try {
+            // 首选方式是使用 os.userInfo().username
+            return os.userInfo().username;
+        } catch (error) {
+            // 备用方式是使用环境变量
+            return process.env.USER || process.env.USERNAME || 'user';
+        }
+    }
+    
+    /**
+     * 替换工具路径中的用户名
+     * 将路径中的 /Users/bin/ 替换为当前用户的路径
+     */
+    private replaceUsernameInPath(toolPath: string): string {
+        if (!toolPath) return toolPath;
+        
+        const currentUsername = this.getCurrentUsername();
+        
+        // 检查路径是否包含 /Users/bin/ 或其变体
+        const userPathRegex = /\/Users\/bin\//;
+        if (userPathRegex.test(toolPath)) {
+            return toolPath.replace(userPathRegex, `/Users/${currentUsername}/`);
+        }
+        
+        // Windows 路径支持
+        const windowsPathRegex = /C:\\Users\\bin\\/i;
+        if (windowsPathRegex.test(toolPath)) {
+            return toolPath.replace(windowsPathRegex, `C:\\Users\\${currentUsername}\\`);
+        }
+        
+        return toolPath;
+    }
+    
+    /**
      * Get the configuration for a specific project workspace
      * @param workspacePath The workspace path to get configuration for
      * @returns The configuration for the project
@@ -58,23 +96,31 @@ export class ConfigManager {
         
         // Return cached config if available
         if (this.cachedConfig.has(workspacePath)) {
-            return this.cachedConfig.get(workspacePath)!;
+            const cachedConfig = { ...this.cachedConfig.get(workspacePath)! };
+            cachedConfig.toolPath = this.replaceUsernameInPath(cachedConfig.toolPath);
+            return cachedConfig;
         }
         
         // Try to read from project config file
         const projectConfig = this.readProjectConfig(workspacePath);
         
         if (projectConfig) {
+            // 更新路径中的用户名
+            projectConfig.toolPath = this.replaceUsernameInPath(projectConfig.toolPath);
+            
             // Cache the config
-            this.cachedConfig.set(workspacePath, projectConfig);
+            this.cachedConfig.set(workspacePath, { ...projectConfig });
             return projectConfig;
         }
         
         // Fall back to VSCode configuration
         const vsCodeConfig = this.readVSCodeConfig();
         
+        // 更新路径中的用户名
+        vsCodeConfig.toolPath = this.replaceUsernameInPath(vsCodeConfig.toolPath);
+        
         // Cache the config
-        this.cachedConfig.set(workspacePath, vsCodeConfig);
+        this.cachedConfig.set(workspacePath, { ...vsCodeConfig });
         return vsCodeConfig;
     }
     
@@ -132,13 +178,17 @@ export class ConfigManager {
             workspacePath = workspaceFolder.uri.fsPath;
         }
         
+        // 确保配置文件中保存的是原始路径
+        // 因为用户名可能会变化，所以在保存时我们保持原样
+        // 当读取时再执行动态替换
+        
         const configPath = path.join(workspacePath, this.CONFIG_FILE_NAME);
         
         try {
             await fs.promises.writeFile(configPath, JSON.stringify(config, null, 2), 'utf8');
             
             // Update cache
-            this.cachedConfig.set(workspacePath, config);
+            this.cachedConfig.set(workspacePath, { ...config });
             
             return true;
         } catch (error) {
