@@ -135,8 +135,39 @@ export class ConfigManager {
                 const configContent = fs.readFileSync(configPath, 'utf8');
                 const parsedConfig = JSON.parse(configContent);
                 
+                // 将命令行参数格式转换为内部格式
+                const internalConfig: Partial<CovegenConfig> = {};
+                
+                // 处理基本字段
+                if (parsedConfig["tool-path"] !== undefined) internalConfig.toolPath = parsedConfig["tool-path"];
+                if (parsedConfig["model"] !== undefined) internalConfig.model = parsedConfig["model"];
+                if (parsedConfig["max-attempts"] !== undefined) internalConfig.maxAttempts = parsedConfig["max-attempts"];
+                if (parsedConfig["coverage-threshold"] !== undefined) internalConfig.coverageThreshold = parsedConfig["coverage-threshold"];
+                if (parsedConfig["test-command"] !== undefined) internalConfig.testCommand = parsedConfig["test-command"];
+                if (parsedConfig["coverage-type"] !== undefined) internalConfig.coverageType = parsedConfig["coverage-type"];
+                if (parsedConfig["test-file-extension"] !== undefined) internalConfig.testFileExtension = parsedConfig["test-file-extension"];
+                if (parsedConfig["coverage-path"] !== undefined) internalConfig.coveragePath = parsedConfig["coverage-path"];
+                if (parsedConfig["include-files"] !== undefined) internalConfig.includeFiles = parsedConfig["include-files"];
+                
+                // 处理可选字段
+                if (parsedConfig["api-base"] !== undefined) internalConfig.apiBase = parsedConfig["api-base"];
+                if (parsedConfig["custom-prompt"] !== undefined) internalConfig.customPrompt = parsedConfig["custom-prompt"];
+                
+                // 如果配置使用了旧格式（直接使用内部字段名称），则也支持它们
+                if (parsedConfig.toolPath !== undefined) internalConfig.toolPath = parsedConfig.toolPath;
+                if (parsedConfig.model !== undefined) internalConfig.model = parsedConfig.model;
+                if (parsedConfig.maxAttempts !== undefined) internalConfig.maxAttempts = parsedConfig.maxAttempts;
+                if (parsedConfig.coverageThreshold !== undefined) internalConfig.coverageThreshold = parsedConfig.coverageThreshold;
+                if (parsedConfig.testCommand !== undefined) internalConfig.testCommand = parsedConfig.testCommand;
+                if (parsedConfig.coverageType !== undefined) internalConfig.coverageType = parsedConfig.coverageType;
+                if (parsedConfig.testFileExtension !== undefined) internalConfig.testFileExtension = parsedConfig.testFileExtension;
+                if (parsedConfig.coveragePath !== undefined) internalConfig.coveragePath = parsedConfig.coveragePath;
+                if (parsedConfig.includeFiles !== undefined) internalConfig.includeFiles = parsedConfig.includeFiles;
+                if (parsedConfig.apiBase !== undefined) internalConfig.apiBase = parsedConfig.apiBase;
+                if (parsedConfig.customPrompt !== undefined) internalConfig.customPrompt = parsedConfig.customPrompt;
+                
                 // Merge with default config to ensure all properties exist
-                return { ...DEFAULT_CONFIG, ...parsedConfig };
+                return { ...DEFAULT_CONFIG, ...internalConfig };
             }
         } catch (error) {
             console.error(`Error reading project config: ${error}`);
@@ -178,14 +209,32 @@ export class ConfigManager {
             workspacePath = workspaceFolder.uri.fsPath;
         }
         
-        // 确保配置文件中保存的是原始路径
-        // 因为用户名可能会变化，所以在保存时我们保持原样
-        // 当读取时再执行动态替换
+        // 创建与命令行参数格式匹配的配置对象
+        const commandLineConfig = {
+            "tool-path": config.toolPath,
+            "model": config.model,
+            "max-attempts": config.maxAttempts,
+            "coverage-threshold": config.coverageThreshold,
+            "test-command": config.testCommand,
+            "coverage-type": config.coverageType,
+            "test-file-extension": config.testFileExtension,
+            "coverage-path": config.coveragePath,
+            "include-files": config.includeFiles
+        };
+        
+        // 添加可选配置
+        if (config.apiBase) {
+            (commandLineConfig as any)["api-base"] = config.apiBase;
+        }
+        
+        if (config.customPrompt) {
+            (commandLineConfig as any)["custom-prompt"] = config.customPrompt;
+        }
         
         const configPath = path.join(workspacePath, this.CONFIG_FILE_NAME);
         
         try {
-            await fs.promises.writeFile(configPath, JSON.stringify(config, null, 2), 'utf8');
+            await fs.promises.writeFile(configPath, JSON.stringify(commandLineConfig, null, 2), 'utf8');
             
             // Update cache
             this.cachedConfig.set(workspacePath, { ...config });
