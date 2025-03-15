@@ -138,7 +138,26 @@ export class ConfigManager {
                 // 将命令行参数格式转换为内部格式
                 const internalConfig: Partial<CovegenConfig> = {};
                 
-                // 处理基本字段
+                // 处理带--前缀的命令行参数格式
+                if (parsedConfig["--tool-path"] !== undefined) internalConfig.toolPath = parsedConfig["--tool-path"];
+                if (parsedConfig["--model"] !== undefined) internalConfig.model = parsedConfig["--model"];
+                if (parsedConfig["--max-attempts"] !== undefined) internalConfig.maxAttempts = parsedConfig["--max-attempts"];
+                if (parsedConfig["--coverage-threshold"] !== undefined) internalConfig.coverageThreshold = parsedConfig["--coverage-threshold"];
+                if (parsedConfig["--test-command"] !== undefined) internalConfig.testCommand = parsedConfig["--test-command"];
+                if (parsedConfig["--coverage-type"] !== undefined) internalConfig.coverageType = parsedConfig["--coverage-type"];
+                if (parsedConfig["--test-file-extension"] !== undefined) internalConfig.testFileExtension = parsedConfig["--test-file-extension"];
+                
+                // 处理带--前缀的coverage path参数
+                if (parsedConfig["--code-coverage-report-path"] !== undefined) 
+                    internalConfig.coveragePath = parsedConfig["--code-coverage-report-path"];
+                
+                if (parsedConfig["--include-files"] !== undefined) internalConfig.includeFiles = parsedConfig["--include-files"];
+                
+                // 处理带--前缀的可选字段
+                if (parsedConfig["--api-base"] !== undefined) internalConfig.apiBase = parsedConfig["--api-base"];
+                if (parsedConfig["--custom-prompt"] !== undefined) internalConfig.customPrompt = parsedConfig["--custom-prompt"];
+                
+                // 为了向后兼容，也支持不带--前缀的格式（单连字符格式）
                 if (parsedConfig["tool-path"] !== undefined) internalConfig.toolPath = parsedConfig["tool-path"];
                 if (parsedConfig["model"] !== undefined) internalConfig.model = parsedConfig["model"];
                 if (parsedConfig["max-attempts"] !== undefined) internalConfig.maxAttempts = parsedConfig["max-attempts"];
@@ -146,25 +165,33 @@ export class ConfigManager {
                 if (parsedConfig["test-command"] !== undefined) internalConfig.testCommand = parsedConfig["test-command"];
                 if (parsedConfig["coverage-type"] !== undefined) internalConfig.coverageType = parsedConfig["coverage-type"];
                 if (parsedConfig["test-file-extension"] !== undefined) internalConfig.testFileExtension = parsedConfig["test-file-extension"];
-                if (parsedConfig["coverage-path"] !== undefined) internalConfig.coveragePath = parsedConfig["coverage-path"];
-                if (parsedConfig["include-files"] !== undefined) internalConfig.includeFiles = parsedConfig["include-files"];
                 
-                // 处理可选字段
-                if (parsedConfig["api-base"] !== undefined) internalConfig.apiBase = parsedConfig["api-base"];
-                if (parsedConfig["custom-prompt"] !== undefined) internalConfig.customPrompt = parsedConfig["custom-prompt"];
+                // 同时支持带单连字符的两种coverage path格式
+                if (parsedConfig["code-coverage-report-path"] !== undefined && !internalConfig.coveragePath) 
+                    internalConfig.coveragePath = parsedConfig["code-coverage-report-path"];
+                else if (parsedConfig["coverage-path"] !== undefined && !internalConfig.coveragePath) 
+                    internalConfig.coveragePath = parsedConfig["coverage-path"];
                 
-                // 如果配置使用了旧格式（直接使用内部字段名称），则也支持它们
-                if (parsedConfig.toolPath !== undefined) internalConfig.toolPath = parsedConfig.toolPath;
-                if (parsedConfig.model !== undefined) internalConfig.model = parsedConfig.model;
-                if (parsedConfig.maxAttempts !== undefined) internalConfig.maxAttempts = parsedConfig.maxAttempts;
-                if (parsedConfig.coverageThreshold !== undefined) internalConfig.coverageThreshold = parsedConfig.coverageThreshold;
-                if (parsedConfig.testCommand !== undefined) internalConfig.testCommand = parsedConfig.testCommand;
-                if (parsedConfig.coverageType !== undefined) internalConfig.coverageType = parsedConfig.coverageType;
-                if (parsedConfig.testFileExtension !== undefined) internalConfig.testFileExtension = parsedConfig.testFileExtension;
-                if (parsedConfig.coveragePath !== undefined) internalConfig.coveragePath = parsedConfig.coveragePath;
-                if (parsedConfig.includeFiles !== undefined) internalConfig.includeFiles = parsedConfig.includeFiles;
-                if (parsedConfig.apiBase !== undefined) internalConfig.apiBase = parsedConfig.apiBase;
-                if (parsedConfig.customPrompt !== undefined) internalConfig.customPrompt = parsedConfig.customPrompt;
+                if (parsedConfig["include-files"] !== undefined && !internalConfig.includeFiles) 
+                    internalConfig.includeFiles = parsedConfig["include-files"];
+                
+                if (parsedConfig["api-base"] !== undefined && !internalConfig.apiBase) 
+                    internalConfig.apiBase = parsedConfig["api-base"];
+                if (parsedConfig["custom-prompt"] !== undefined && !internalConfig.customPrompt) 
+                    internalConfig.customPrompt = parsedConfig["custom-prompt"];
+                
+                // 兼容旧的驼峰命名格式
+                if (parsedConfig.toolPath !== undefined && !internalConfig.toolPath) internalConfig.toolPath = parsedConfig.toolPath;
+                if (parsedConfig.model !== undefined && !internalConfig.model) internalConfig.model = parsedConfig.model;
+                if (parsedConfig.maxAttempts !== undefined && !internalConfig.maxAttempts) internalConfig.maxAttempts = parsedConfig.maxAttempts;
+                if (parsedConfig.coverageThreshold !== undefined && !internalConfig.coverageThreshold) internalConfig.coverageThreshold = parsedConfig.coverageThreshold;
+                if (parsedConfig.testCommand !== undefined && !internalConfig.testCommand) internalConfig.testCommand = parsedConfig.testCommand;
+                if (parsedConfig.coverageType !== undefined && !internalConfig.coverageType) internalConfig.coverageType = parsedConfig.coverageType;
+                if (parsedConfig.testFileExtension !== undefined && !internalConfig.testFileExtension) internalConfig.testFileExtension = parsedConfig.testFileExtension;
+                if (parsedConfig.coveragePath !== undefined && !internalConfig.coveragePath) internalConfig.coveragePath = parsedConfig.coveragePath;
+                if (parsedConfig.includeFiles !== undefined && !internalConfig.includeFiles) internalConfig.includeFiles = parsedConfig.includeFiles;
+                if (parsedConfig.apiBase !== undefined && !internalConfig.apiBase) internalConfig.apiBase = parsedConfig.apiBase;
+                if (parsedConfig.customPrompt !== undefined && !internalConfig.customPrompt) internalConfig.customPrompt = parsedConfig.customPrompt;
                 
                 // Merge with default config to ensure all properties exist
                 return { ...DEFAULT_CONFIG, ...internalConfig };
@@ -209,26 +236,26 @@ export class ConfigManager {
             workspacePath = workspaceFolder.uri.fsPath;
         }
         
-        // 创建与命令行参数格式匹配的配置对象
+        // 创建与命令行参数格式完全匹配的配置对象，包括前缀--
         const commandLineConfig = {
-            "tool-path": config.toolPath,
-            "model": config.model,
-            "max-attempts": config.maxAttempts,
-            "coverage-threshold": config.coverageThreshold,
-            "test-command": config.testCommand,
-            "coverage-type": config.coverageType,
-            "test-file-extension": config.testFileExtension,
-            "coverage-path": config.coveragePath,
-            "include-files": config.includeFiles
+            "--tool-path": config.toolPath,
+            "--test-command": config.testCommand,
+            "--code-coverage-report-path": config.coveragePath,
+            "--coverage-type": config.coverageType,
+            "--model": config.model,
+            "--max-attempts": config.maxAttempts,
+            "--coverage-threshold": config.coverageThreshold,
+            "--test-file-extension": config.testFileExtension,
+            "--include-files": config.includeFiles
         };
         
         // 添加可选配置
         if (config.apiBase) {
-            (commandLineConfig as any)["api-base"] = config.apiBase;
+            (commandLineConfig as any)["--api-base"] = config.apiBase;
         }
         
         if (config.customPrompt) {
-            (commandLineConfig as any)["custom-prompt"] = config.customPrompt;
+            (commandLineConfig as any)["--custom-prompt"] = config.customPrompt;
         }
         
         const configPath = path.join(workspacePath, this.CONFIG_FILE_NAME);
